@@ -1,0 +1,7 @@
+{
+  "resolution": "best",
+  "downloadPath": "C:\\Desenvolvimento em Js\\bot de musica\\musics",
+  "allowLowerQuality": true,
+  "minimizeToTray": true,
+  "ignorePlaylist": true
+}
