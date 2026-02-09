@@ -9,99 +9,135 @@
   <body>
     <div class="top-bar">
       <div class="app-title">
-        <span class="wave-icon">🌊</span>
         <span>DLWave</span>
       </div>
       <button class="btn-settings" id="btnSettings" title="Configurações">⚙️</button>
     </div>
 
-    <div class="container">
-      <h1>YT-DLP + FFmpeg</h1>
-      <p class="subtitle">Downloader de vídeos e áudios do YouTube</p>
-
-      <div class="input-group">
-        <label for="url">URL do YouTube ou YouTube Music</label>
-        <input 
-          type="text" 
-          id="url" 
-          placeholder="Cole aqui o link do YouTube ou YouTube Music..."
-        />
-        <div class="ignore-playlist-container">
-          <label class="ignore-playlist-label" title="Baixar apenas o vídeo ou áudio individual, ignorando a playlist ou mix">
-            <input type="checkbox" id="ignorePlaylist" />
-            <span>Ignorar Playlist</span>
-          </label>
-        </div>
+    <!-- Barra de Tabs -->
+    <div class="tabs-bar">
+      <div class="tabs-container" id="tabsContainer">
+        <!-- Tabs serão adicionadas dinamicamente aqui -->
       </div>
+      <button class="btn-new-tab" id="btnNewTab" title="Nova Tab">+</button>
+    </div>
 
-      <div class="queue-area" id="queueArea" style="display: none;">
-        <span class="queue-label">Fila</span>
-        <div class="queue-content" id="queueContent">Nenhum item na fila</div>
-        <span class="queue-count" id="queueCount">0/0</span>
-        <button class="btn-quality-warning" id="btnQualityWarning" title="Configurar qualidade">⚠️</button>
+    <!-- Barra de Perfis -->
+    <div class="profiles-sidebar">
+      <h3 class="profiles-title">Perfil de Download</h3>
+      <button class="btn-save-profile" id="btnSaveProfile" title="Salvar Perfil">Salvar</button>
+      <div class="profiles-list" id="profilesList">
+        <!-- Perfis serão adicionados aqui -->
       </div>
+    </div>
 
-      <div class="options-row">
-        <div class="input-group">
-          <label for="type">Tipo de Download</label>
-          <div class="select-wrapper">
-            <select id="type">
-              <option value="video">Vídeo</option>
-              <option value="audio">Áudio</option>
-            </select>
-          </div>
-        </div>
+    <!-- Área de Conteúdo das Tabs -->
+    <div class="tabs-content" id="tabsContent">
+      <!-- Conteúdo das tabs será adicionado dinamicamente aqui -->
+    </div>
+
+    <!-- Template para cada Tab -->
+    <template id="tabTemplate">
+      <div class="container tab-content">
+        <h1>YT-DLP + FFmpeg</h1>
+        <p class="subtitle">Downloader de vídeos e áudios do YouTube</p>
 
         <div class="input-group">
-          <label for="format">Formato</label>
-          <div class="select-wrapper">
-            <select id="format">
-              <option value="mp4">MP4 (Recomendado)</option>
-              <option value="mkv">MKV (Alta Qualidade)</option>
-              <option value="webm">WEBM</option>
-              <option value="avi">AVI</option>
-              <option value="mov">MOV</option>
-              <option value="flv">FLV</option>
-            </select>
+          <label>URL do YouTube ou YouTube Music</label>
+          <input 
+            type="text" 
+            class="url-input" 
+            placeholder="Cole aqui o link do YouTube ou YouTube Music..."
+          />
+          <div class="ignore-playlist-container">
+            <label class="ignore-playlist-label" title="Baixar apenas o vídeo ou áudio individual, ignorando a playlist ou mix">
+              <input type="checkbox" class="ignorePlaylist-input" />
+              <span>Ignorar Playlist</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="queue-area" style="display: none;">
+          <span class="queue-label">Fila</span>
+          <div class="queue-content">Nenhum item na fila</div>
+          <span class="queue-count">0/0</span>
+          <button class="btn-quality-warning" title="Configurar qualidade">⚠️</button>
+        </div>
+
+        <div class="options-row">
+          <div class="input-group">
+            <label>Tipo de Download</label>
+            <div class="select-wrapper">
+              <select class="type-select">
+                <option value="video">Vídeo</option>
+                <option value="audio">Áudio</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label>Formato</label>
+            <div class="select-wrapper">
+              <select class="format-select">
+                <option value="mp4">MP4 (Recomendado)</option>
+                <option value="mkv">MKV (Alta Qualidade)</option>
+                <option value="webm">WEBM</option>
+                <option value="avi">AVI</option>
+                <option value="mov">MOV</option>
+                <option value="flv">FLV</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label>Resolução</label>
+            <div class="select-wrapper">
+              <select class="resolution-select">
+                <option value="best">Melhor Disponível</option>
+                <option value="2160">4K (2160p)</option>
+                <option value="1440">2K (1440p)</option>
+                <option value="1080">Full HD (1080p)</option>
+                <option value="720">HD (720p)</option>
+                <option value="480">SD (480p)</option>
+                <option value="360">360p</option>
+                <option value="240">240p</option>
+              </select>
+            </div>
           </div>
         </div>
 
         <div class="input-group">
-          <label for="resolution">Resolução</label>
-          <div class="select-wrapper">
-            <select id="resolution">
-              <option value="best">Melhor Disponível</option>
-              <option value="2160">4K (2160p)</option>
-              <option value="1440">2K (1440p)</option>
-              <option value="1080">Full HD (1080p)</option>
-              <option value="720">HD (720p)</option>
-              <option value="480">SD (480p)</option>
-              <option value="360">360p</option>
-              <option value="240">240p</option>
-            </select>
+          <label>Local de Download</label>
+          <div class="path-selector">
+            <div class="path-display">
+              Nenhuma pasta selecionada
+            </div>
+            <button class="btn-browse">Escolher Pasta</button>
+            <button class="btn-open-folder" disabled title="Abrir pasta">📁</button>
           </div>
         </div>
-      </div>
 
-      <div class="input-group">
-        <label for="path">Local de Download</label>
-        <div class="path-selector">
-          <div class="path-display" id="pathDisplay">
-            Nenhuma pasta selecionada
-          </div>
-          <button class="btn-browse" id="btnBrowse">Escolher Pasta</button>
-          <button class="btn-open-folder" id="btnOpenFolder" disabled title="Abrir pasta">📁</button>
+        <div class="download-controls">
+          <button class="btn-download">
+            Iniciar Download
+          </button>
+          <button class="btn-cancel-download" style="display: none;">Cancelar Download</button>
         </div>
-      </div>
 
-      <div class="download-controls">
-        <button class="btn-download" id="btnDownload">
-          Iniciar Download
-        </button>
-        <button class="btn-cancel-download" id="btnCancelDownload" style="display: none;">Cancelar Download</button>
+        <div class="log-area"></div>
       </div>
+    </template>
 
-      <div id="log"></div>
+    <!-- Menu de Contexto -->
+    <div class="context-menu" id="contextMenu" style="display: none;">
+      <div class="context-menu-item" id="contextMenuRename">Renomear</div>
+      <div class="context-menu-item" id="contextMenuClose">Fechar</div>
+    </div>
+
+    <!-- Menu de Contexto dos Perfis -->
+    <div class="context-menu" id="profileContextMenu" style="display: none;">
+      <div class="context-menu-item" id="profileMenuRename">Renomear</div>
+      <div class="context-menu-item" id="profileMenuDelete">Excluir</div>
     </div>
 
     <script type="module" src="/src/renderer.js"></script>

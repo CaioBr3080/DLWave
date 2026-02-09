@@ -1,7 +1,8 @@
 {
-  "resolution": "best",
-  "downloadPath": "C:\\Desenvolvimento em Js\\bot de musica\\musics",
-  "allowLowerQuality": true,
-  "minimizeToTray": true,
-  "ignorePlaylist": true
+  "allowLowerQuality": false,
+  "ignorePlaylistGlobal": false,
+  "minimizeToTray": false,
+  "noPlaylistFolder": false,
+  "defaultDownloadPath": "",
+  "cookiesFilePath": ""
 }

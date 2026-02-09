@@ -11,8 +11,8 @@ if (started) {
 }
 
 let mainWindowGlobal = null;
-let currentDownloadProcess = null;
-let downloadCancelled = false;
+const downloadProcesses = new Map(); // Map<tabId, process>
+const downloadCancelledFlags = new Map(); // Map<tabId, boolean>
 let tray = null;
 
 // Configurar binPath assim que o app estiver pronto
@@ -375,6 +375,22 @@ ipcMain.handle("instalar-deps", instalarDepsComUI);
 ipcMain.handle("select-folder", async () => {
   const result = await dialog.showOpenDialog(mainWindowGlobal, {
     properties: ['openDirectory']
+  });
+  
+  if (!result.canceled && result.filePaths.length > 0) {
+    return result.filePaths[0];
+  }
+  return null;
+});
+
+// Handler para selecionar arquivo de cookies
+ipcMain.handle("select-cookies-file", async () => {
+  const result = await dialog.showOpenDialog(mainWindowGlobal, {
+    properties: ['openFile'],
+    filters: [
+      { name: 'Text Files', extensions: ['txt'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
   });
   
   if (!result.canceled && result.filePaths.length > 0) {
@@ -801,12 +817,52 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
 
 // Handler para iniciar download
 ipcMain.handle("start-download", async (event, dados) => {
-  const { url, type, format, resolution, downloadPath, playlistFolderName, allowLowerQuality, playlistItems, ignorePlaylist } = dados;
+  const { tabId, url, type, format, resolution, downloadPath, playlistFolderName, allowLowerQuality, playlistItems, ignorePlaylist, cookiesFilePath } = dados;
   
   // Reset flag de cancelamento no início do download
-  downloadCancelled = false;
+  downloadCancelledFlags.set(tabId, false);
   
   try {
+    // Verificar espaço em disco disponível
+    const driveLetter = path.parse(downloadPath).root;
+    const checkDiskSpace = () => {
+      return new Promise((resolve) => {
+        exec(`powershell -command "Get-PSDrive -Name ${driveLetter.replace(':', '').replace('\\', '')} | Select-Object -ExpandProperty Free"`, (error, stdout) => {
+          if (error) {
+            resolve(null); // Ignorar erro se não conseguir verificar
+          } else {
+            const freeBytes = parseInt(stdout.trim());
+            resolve(freeBytes);
+          }
+        });
+      });
+    };
+    
+    const freeSpace = await checkDiskSpace();
+    if (freeSpace !== null) {
+      const freeGB = (freeSpace / 1024 / 1024 / 1024).toFixed(2);
+      const minRequiredBytes = 500 * 1024 * 1024; // 500 MB mínimo
+      
+      if (freeSpace < minRequiredBytes) {
+        const errorMsg = `⚠️ Espaço em disco insuficiente! Disponível: ${freeGB} GB. Recomendado: pelo menos 0.5 GB livre.`;
+        if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+          mainWindowGlobal.webContents.send('log', tabId, errorMsg);
+        }
+        throw new Error('Espaço em disco insuficiente');
+      } else {
+        if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+          mainWindowGlobal.webContents.send('log', tabId, `ℹ️ Espaço disponível: ${freeGB} GB`);
+        }
+      }
+    }
+    
+    // Informar se cookies estão sendo usados
+    if (cookiesFilePath && cookiesFilePath.trim() !== '') {
+      if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, `🍪 Usando arquivo de cookies para autenticação`);
+      }
+    }
+    
     // Determinar o caminho final (com pasta da playlist se aplicável)
     let finalDownloadPath = downloadPath;
     if (playlistFolderName) {
@@ -830,14 +886,14 @@ ipcMain.handle("start-download", async (event, dados) => {
       const chunks = Math.ceil(totalItems / chunkSize);
       
       if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
-        mainWindowGlobal.webContents.send('log', `📦 Playlist grande detectada: ${totalItems} itens`);
-        mainWindowGlobal.webContents.send('log', `🔄 Dividindo em ${chunks} lotes de até ${chunkSize} itens cada`);
+        mainWindowGlobal.webContents.send('log', tabId, `📦 Playlist grande detectada: ${totalItems} itens`);
+        mainWindowGlobal.webContents.send('log', tabId, `🔄 Dividindo em ${chunks} lotes de até ${chunkSize} itens cada`);
       }
       
       // Processar cada lote
       for (let i = 0; i < chunks; i++) {
         // Verificar se o download foi cancelado antes de processar próximo chunk
-        if (downloadCancelled) {
+        if (downloadCancelledFlags.get(tabId)) {
           throw new Error('Download cancelado pelo usuário');
         }
         
@@ -845,19 +901,19 @@ ipcMain.handle("start-download", async (event, dados) => {
         const end = Math.min((i + 1) * chunkSize, totalItems);
         
         if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
-          mainWindowGlobal.webContents.send('log', `\n📥 Lote ${i + 1}/${chunks}: baixando itens ${start} a ${end}`);
+          mainWindowGlobal.webContents.send('log', tabId, `\n📥 Lote ${i + 1}/${chunks}: baixando itens ${start} a ${end}`);
         }
         
         try {
-          await downloadChunk(dados, finalDownloadPath, start, end);
+          await downloadChunk(tabId, dados, finalDownloadPath, start, end);
         } catch (error) {
           // Se houve erro, reportar mas continuar com próximo lote se usuário não cancelou
-          if (downloadCancelled) {
+          if (downloadCancelledFlags.get(tabId)) {
             throw error; // Se foi cancelamento, parar tudo
           }
           if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
-            mainWindowGlobal.webContents.send('log', `⚠️ Erro no lote ${i + 1}: ${error.message}`);
-            mainWindowGlobal.webContents.send('log', `➡️ Continuando com próximo lote...`);
+            mainWindowGlobal.webContents.send('log', tabId, `⚠️ Erro no lote ${i + 1}: ${error.message}`);
+            mainWindowGlobal.webContents.send('log', tabId, `➡️ Continuando com próximo lote...`);
           }
         }
       }
@@ -865,19 +921,20 @@ ipcMain.handle("start-download", async (event, dados) => {
       return { sucesso: true, mensagem: `Download concluído! ${totalItems} itens processados em ${chunks} lotes` };
     } else {
       // Playlist pequena ou vídeo único - download normal
-      return downloadChunk(dados, finalDownloadPath);
+      return downloadChunk(tabId, dados, finalDownloadPath);
     }
   } catch (error) {
     // Resetar flag de cancelamento quando houver erro
-    if (downloadCancelled) {
-      downloadCancelled = false;
+    if (downloadCancelledFlags.get(tabId)) {
+      downloadCancelledFlags.set(tabId, false);
     }
     throw error;
-  }});
+  }
+});
 
 // Função auxiliar para baixar um chunk (lote) da playlist
-async function downloadChunk(dados, finalDownloadPath, playlistStart = null, playlistEnd = null) {
-  const { url, type, format, resolution, ignorePlaylist } = dados;
+async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = null, playlistEnd = null) {
+  const { url, type, format, resolution, ignorePlaylist, cookiesFilePath } = dados;
   
   return new Promise((resolve, reject) => {
     const ytdlpPath = path.join(binPath, 'yt-dlp.exe');
@@ -925,33 +982,77 @@ async function downloadChunk(dados, finalDownloadPath, playlistStart = null, pla
       }
     }
     
+    // Se houver arquivo de cookies, adicionar
+    if (cookiesFilePath && cookiesFilePath.trim() !== '') {
+      args.push('--cookies', cookiesFilePath);
+    }
+    
     args.push('--progress'); // Mostrar progresso
     args.push('--newline'); // Nova linha para cada atualização de progresso
     args.push(url);
     
     const ytdlp = spawn(ytdlpPath, args);
-    currentDownloadProcess = ytdlp; // Armazenar referência para cancelamento
+    downloadProcesses.set(tabId, ytdlp); // Armazenar referência para cancelamento
     
     // Capturar saída
     ytdlp.stdout.on('data', (data) => {
       const output = data.toString();
       if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
-        mainWindowGlobal.webContents.send('log', output.trim());
+        mainWindowGlobal.webContents.send('log', tabId, output.trim());
       }
     });
     
     ytdlp.stderr.on('data', (data) => {
       const error = data.toString();
+      
+      // Verificar se é erro de arquivo em uso
+      const fileInUseErrors = [
+        'being used by another',
+        'file is in use',
+        'permission denied',
+        'cannot create',
+        'access denied',
+        'cannot access the file',
+        'the process cannot access',
+        'used by another application'
+      ];
+      
+      const isFileInUse = fileInUseErrors.some(msg => error.toLowerCase().includes(msg));
+      
+      if (isFileInUse && mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        // Tentar extrair nome do arquivo do erro
+        const fileMatch = error.match(/['"]([^'"]+\.(mp4|mp3|mkv|webm|m4a|opus|flac|wav|aac|avi|mov|flv|ogg))['"]?/i);
+        const fileName = fileMatch ? fileMatch[1] : 'arquivo de destino';
+        
+        mainWindowGlobal.webContents.send('file-in-use-error', tabId, fileName);
+        return; // Não mostrar erro bruto
+      }
+      
+      // Verificar se é erro de espaço em disco
+      const diskSpaceErrors = [
+        'no space left',
+        'disk full',
+        'insufficient disk space',
+        'not enough space',
+        'out of disk space'
+      ];
+      
+      const isDiskSpaceError = diskSpaceErrors.some(msg => error.toLowerCase().includes(msg));
+      
+      if (isDiskSpaceError && mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, '💾 ERRO: Espaço em disco insuficiente! Libere espaço e tente novamente.');
+      }
+      
       if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
-        mainWindowGlobal.webContents.send('log', error.trim());
+        mainWindowGlobal.webContents.send('log', tabId, error.trim());
       }
     });
     
     ytdlp.on('close', (code) => {
-      currentDownloadProcess = null; // Limpar referência
+      downloadProcesses.delete(tabId); // Limpar referência
       
       // Se foi cancelado manualmente
-      if (downloadCancelled) {
+      if (downloadCancelledFlags.get(tabId)) {
         // NÃO resetar a flag aqui - será resetada no próximo download ou deve persistir para parar todos os chunks
         reject(new Error('Download cancelado pelo usuário'));
         return;
@@ -965,7 +1066,7 @@ async function downloadChunk(dados, finalDownloadPath, playlistStart = null, pla
     });
     
     ytdlp.on('error', (error) => {
-      currentDownloadProcess = null;
+      downloadProcesses.delete(tabId);
       // NÃO resetar downloadCancelled aqui - pode ser um erro durante cancelamento
       reject(new Error(`Erro ao executar yt-dlp: ${error.message}`));
     });
@@ -973,28 +1074,29 @@ async function downloadChunk(dados, finalDownloadPath, playlistStart = null, pla
 }
 
 // Handler para cancelar download
-ipcMain.handle("cancel-download", async () => {
-  if (currentDownloadProcess) {
+ipcMain.handle("cancel-download", async (event, tabId) => {
+  const downloadProcess = downloadProcesses.get(tabId);
+  if (downloadProcess) {
     try {
-      downloadCancelled = true;
+      downloadCancelledFlags.set(tabId, true);
       
       // No Windows, precisamos matar o processo de forma mais agressiva
       if (process.platform === 'win32') {
         // Usar taskkill para formar o encerramento no Windows
-        exec(`taskkill /pid ${currentDownloadProcess.pid} /T /F`, (error) => {
+        exec(`taskkill /pid ${downloadProcess.pid} /T /F`, (error) => {
           if (error) {
             console.error('Erro ao matar processo:', error);
           }
         });
       } else {
         // Unix/Linux/Mac
-        currentDownloadProcess.kill('SIGTERM');
+        downloadProcess.kill('SIGTERM');
       }
       
-      currentDownloadProcess = null;
+      downloadProcesses.delete(tabId);
       
       if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
-        mainWindowGlobal.webContents.send('log', 'Download cancelado!');
+        mainWindowGlobal.webContents.send('log', tabId, 'Download cancelado!');
       }
       
       return { sucesso: true, mensagem: 'Download cancelado' };
@@ -1097,8 +1199,15 @@ function createTray() {
       label: '⌂ Mostrar DLWave',
       click: () => {
         if (mainWindowGlobal) {
+          mainWindowGlobal.setSkipTaskbar(false); // Voltar para taskbar
           mainWindowGlobal.show();
           mainWindowGlobal.focus();
+          
+          // Remover da bandeja quando restaurar
+          if (tray && !tray.isDestroyed()) {
+            tray.destroy();
+            tray = null;
+          }
         }
       }
     },
@@ -1119,12 +1228,16 @@ function createTray() {
     if (mainWindowGlobal) {
       if (mainWindowGlobal.isVisible()) {
         mainWindowGlobal.hide();
+        mainWindowGlobal.setSkipTaskbar(true);
       } else {
+        mainWindowGlobal.setSkipTaskbar(false); // Voltar para taskbar
         mainWindowGlobal.show();
         mainWindowGlobal.focus();
+        
         // Remover da bandeja quando restaurar
         if (tray && !tray.isDestroyed()) {
           tray.destroy();
+          tray = null;
         }
       }
     }
@@ -1132,11 +1245,14 @@ function createTray() {
   
   tray.on('double-click', () => {
     if (mainWindowGlobal) {
+      mainWindowGlobal.setSkipTaskbar(false); // Voltar para taskbar
       mainWindowGlobal.show();
       mainWindowGlobal.focus();
+      
       // Remover da bandeja quando restaurar
       if (tray && !tray.isDestroyed()) {
         tray.destroy();
+        tray = null;
       }
     }
   });
@@ -1158,10 +1274,40 @@ const createWindow = () => {
 
   mainWindowGlobal = mainWindow;
 
-  // Criar tray icon
-  if (!tray) {
-    createTray();
-  }
+  // Remover menu nativo do Electron
+  Menu.setApplicationMenu(null);
+
+  // Listener para verificar downloads ativos ao fechar
+  mainWindow.on('close', async (event) => {
+    event.preventDefault(); // Prevenir fechamento imediato
+    
+    // Enviar mensagem para renderer verificar downloads ativos e mostrar diálogo
+    mainWindow.webContents.send('before-quit-check');
+    
+    // Aguardar resposta do renderer (true = pode fechar, false = cancelar)
+    ipcMain.once('before-quit-response', async (_, shouldClose) => {
+      if (shouldClose) {
+        // Usuário confirmou - cancelar todos os downloads e fechar
+        for (const [tabId, downloadProc] of downloadProcesses) {
+          try {
+            if (process.platform === 'win32') {
+              exec(`taskkill /pid ${downloadProc.pid} /T /F`);
+            } else {
+              downloadProc.kill('SIGTERM');
+            }
+          } catch (err) {
+            console.error('Erro ao cancelar download:', err);
+          }
+        }
+        downloadProcesses.clear();
+        
+        // Remover listener para evitar loop
+        mainWindow.removeAllListeners('close');
+        mainWindow.close();
+      }
+      // Se shouldClose === false, não faz nada (cancelou o fechamento)
+    });
+  });
 
   // Listener para minimizar
   mainWindow.on('minimize', async (event) => {
@@ -1177,6 +1323,12 @@ const createWindow = () => {
         if (prefs && prefs.minimizeToTray) {
           event.preventDefault();
           mainWindow.hide();
+          mainWindow.setSkipTaskbar(true); // Remover da taskbar
+          
+          // Criar tray icon se não existir
+          if (!tray || tray.isDestroyed()) {
+            createTray();
+          }
         }
       }
     } catch (error) {
