@@ -52,7 +52,7 @@ _(Adicione screenshots do aplicativo aqui)_
 
 ### Instalador Windows (Recomendado)
 
-Baixe a versão mais recente em [Releases](https://github.com/CaioBr3080//DLWave/releases/tag/)
+Baixe a versão mais recente em [Releases](https://github.com/CaioBr3080/DLWave/releases)
 
 **Arquivo:** `DLWave-1.0.0 Setup.exe`
 
