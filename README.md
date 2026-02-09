@@ -54,7 +54,7 @@ _(Adicione screenshots do aplicativo aqui)_
 
 Baixe a versão mais recente em [Releases](https://github.com/caioa/DLWave/releases)
 
-**Arquivo:** `DLWave-1.0.0 Setup.exe` (~128 MB)
+**Arquivo:** `DLWave-1.0.0 Setup.exe`
 
 ### ⚠️ Aviso de Antivírus
 
