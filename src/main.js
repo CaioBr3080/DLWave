@@ -1547,7 +1547,7 @@ const createWindow = () => {
   mainWindow.on('minimize', async (event) => {
     try {
       const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
-      const appPath = isDev ? process.cwd() : app.getAppPath();
+      const appPath = isDev ? process.cwd() : app.getPath('userData');
       const prefsPath = path.join(appPath, 'preferences.json');
       
       if (fs.existsSync(prefsPath)) {

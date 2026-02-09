@@ -11,6 +11,14 @@ module.exports = {
       './EULA.txt'
     ],
     
+    // Ignorar binários - serão baixados na primeira execução
+    ignore: [
+      /^\/bin\/.*\.exe$/,
+      /^\/bin\/ffmpeg\.exe$/,
+      /^\/bin\/yt-dlp\.exe$/,
+      /^\/deps\//
+    ],
+    
     // Para assinar digitalmente (quando tiver certificado):
     // win32metadata: {
     //   CompanyName: 'Seu Nome/Empresa',

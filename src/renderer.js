@@ -126,6 +126,7 @@ class TabManager {
         resolution: 'best',
         downloadPath: '',
         ignorePlaylist: ignorePlaylistDefault,
+        allowLowerQuality: false,
         isPlaylistDownload: false,
         playlistItems: [],
         currentItem: 0,
