@@ -43,10 +43,16 @@ app.whenReady().then(() => {
   
   createWindow();
 
-  // Verificar dependências automaticamente após criar a janela
-  setTimeout(() => {
-    verificarEInstalarDeps();
-  }, 1000);
+  // Verificar se é primeira execução e mostrar EULA
+  setTimeout(async () => {
+    const eulaAccepted = await checkAndShowEULA();
+    if (eulaAccepted) {
+      // Só verificar dependências se EULA foi aceito
+      setTimeout(() => {
+        verificarEInstalarDeps();
+      }, 500);
+    }
+  }, 500);
 
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
@@ -62,6 +68,216 @@ async function verificarEInstalarDeps() {
   if (!depsOk()) {
     await instalarDepsComUI();
   }
+}
+
+// Função para verificar primeira execução e mostrar EULA
+async function checkAndShowEULA() {
+  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+  const userDataPath = isDev ? process.cwd() : app.getPath('userData');
+  const eulaFlagPath = path.join(userDataPath, '.eula-accepted');
+  
+  // Se já aceitou o EULA, retornar true
+  if (fs.existsSync(eulaFlagPath)) {
+    return true;
+  }
+  
+  // Ler conteúdo do EULA
+  const eulaPath = isDev ? path.join(process.cwd(), 'EULA.txt') : path.join(process.resourcesPath, 'EULA.txt');
+  let eulaText = 'EULA not found';
+  
+  try {
+    if (fs.existsSync(eulaPath)) {
+      eulaText = fs.readFileSync(eulaPath, 'utf-8');
+    }
+  } catch (error) {
+    console.error('Erro ao ler EULA:', error);
+  }
+  
+  // Criar janela do EULA
+  return new Promise((resolve) => {
+    const eulaWindow = new BrowserWindow({
+      width: 700,
+      height: 600,
+      resizable: false,
+      frame: false,
+      backgroundColor: '#1e1e1e',
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false,
+      },
+      parent: mainWindowGlobal,
+      modal: true,
+    });
+
+    let accepted = false;
+
+    eulaWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e1e1e 0%, #2d2d2d 100%);
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+          }
+          .header {
+            padding: 20px 30px;
+            border-bottom: 1px solid #3a3a3a;
+            -webkit-app-region: drag;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+          }
+          .logo {
+            font-size: 32px;
+          }
+          .title-area h2 {
+            font-size: 18px;
+            margin-bottom: 3px;
+          }
+          .title-area p {
+            font-size: 12px;
+            color: #888;
+          }
+          .content {
+            flex: 1;
+            padding: 20px 30px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+          }
+          .eula-text {
+            background: #2a2a2a;
+            border: 1px solid #3a3a3a;
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            height: 350px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+          }
+          .eula-text::-webkit-scrollbar {
+            width: 8px;
+          }
+          .eula-text::-webkit-scrollbar-track {
+            background: #1e1e1e;
+            border-radius: 4px;
+          }
+          .eula-text::-webkit-scrollbar-thumb {
+            background: #444;
+            border-radius: 4px;
+          }
+          .eula-text::-webkit-scrollbar-thumb:hover {
+            background: #555;
+          }
+          .notice {
+            background: #2a2a2a;
+            border-left: 3px solid #4caf50;
+            padding: 15px;
+            border-radius: 4px;
+            font-size: 13px;
+            margin-bottom: 20px;
+          }
+          .notice strong {
+            color: #4caf50;
+          }
+          .buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 20px 30px;
+            border-top: 1px solid #3a3a3a;
+          }
+          button {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+          }
+          .btn-decline {
+            background: #3a3a3a;
+            color: #fff;
+          }
+          .btn-decline:hover {
+            background: #4a4a4a;
+          }
+          .btn-accept {
+            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+            color: #fff;
+          }
+          .btn-accept:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="logo">🌊</div>
+          <div class="title-area">
+            <h2>DLWave - End User License Agreement</h2>
+            <p>Please read and accept to continue</p>
+          </div>
+        </div>
+        <div class="content">
+          <div class="notice">
+            <strong>Open Source Software:</strong> DLWave is free and open source (MIT License). By using this software, you agree to comply with YouTube's Terms of Service and respect copyright laws.
+          </div>
+          <div class="eula-text">${eulaText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+        </div>
+        <div class="buttons">
+          <button class="btn-decline" onclick="decline()">I Decline</button>
+          <button class="btn-accept" onclick="accept()">I Accept</button>
+        </div>
+        <script>
+          const { ipcRenderer } = require('electron');
+          
+          function accept() {
+            ipcRenderer.send('eula-response', true);
+          }
+          
+          function decline() {
+            ipcRenderer.send('eula-response', false);
+          }
+        </script>
+      </body>
+      </html>
+    `)}`);
+
+    // Listener para resposta do EULA
+    ipcMain.once('eula-response', (event, userAccepted) => {
+      accepted = userAccepted;
+      eulaWindow.close();
+    });
+
+    eulaWindow.on('close', () => {
+      if (!accepted) {
+        // Usuário recusou ou fechou - sair do app
+        app.quit();
+        resolve(false);
+      } else {
+        // Usuário aceitou
+        try {
+          fs.writeFileSync(eulaFlagPath, new Date().toISOString(), 'utf-8');
+        } catch (error) {
+          console.error('Erro ao salvar flag EULA:', error);
+        }
+        resolve(true);
+      }
+    });
+  });
 }
 
 async function instalarDepsComUI() {

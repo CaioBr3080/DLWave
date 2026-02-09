@@ -1,0 +1,68 @@
+END USER LICENSE AGREEMENT (EULA)
+DLWave - YouTube Video/Audio Downloader
+Version 1.0.0
+
+PLEASE READ THIS END USER LICENSE AGREEMENT CAREFULLY BEFORE USING THIS SOFTWARE.
+
+1. ACCEPTANCE OF TERMS
+By installing, copying, or using DLWave ("the Software"), you agree to be bound by the terms of this End User License Agreement ("EULA"). If you do not agree to the terms of this EULA, do not install or use the Software.
+
+2. LICENSE GRANT
+This Software is licensed under the MIT License and is provided free of charge. You are granted a non-exclusive, worldwide license to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, subject to the conditions below.
+
+3. OPEN SOURCE
+This Software is open source. The complete source code is available at:
+https://github.com/CaioBr3080/DLWave
+
+4. DISCLAIMER OF WARRANTY
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+5. LIMITATION OF LIABILITY
+In no event shall the authors or copyright holders be liable for any direct, indirect, incidental, special, exemplary, or consequential damages (including, but not limited to, procurement of substitute goods or services; loss of use, data, or profits; or business interruption) however caused and on any theory of liability, whether in contract, strict liability, or tort (including negligence or otherwise) arising in any way out of the use of this software, even if advised of the possibility of such damage.
+
+6. THIRD-PARTY COMPONENTS
+This Software uses the following third-party components:
+- yt-dlp (Unlicense) - https://github.com/yt-dlp/yt-dlp
+- ffmpeg (GPL/LGPL) - https://ffmpeg.org/
+- Electron (MIT) - https://www.electronjs.org/
+
+7. USER RESPONSIBILITY
+You are solely responsible for:
+- Complying with YouTube's Terms of Service
+- Respecting copyright and intellectual property rights
+- Using the Software lawfully and ethically
+- Any content downloaded using this Software
+
+8. PROHIBITED USE
+This Software is for personal and educational use only. You may not use it to:
+- Violate copyright laws or YouTube's Terms of Service
+- Download content without proper authorization
+- Engage in any illegal activities
+- Re-distribute copyrighted content without permission
+
+9. AUTOMATIC UPDATES
+The Software may automatically download and install updates for yt-dlp and ffmpeg components to ensure functionality.
+
+10. DATA COLLECTION
+This Software does NOT collect, store, or transmit any personal data or telemetry. All operations are performed locally on your computer.
+
+11. ANTIVIRUS WARNINGS
+This Software is not digitally signed. Antivirus programs may flag it as suspicious. The Software is safe and open source. You can verify the source code at the GitHub repository mentioned above.
+
+12. TERMINATION
+This license is effective until terminated. Your rights under this license will terminate automatically without notice if you fail to comply with any term of this EULA.
+
+13. GOVERNING LAW
+This EULA shall be governed by and construed in accordance with the laws of Brazil, without regard to its conflict of law provisions.
+
+14. ENTIRE AGREEMENT
+This EULA constitutes the entire agreement between you and the developer concerning the Software and supersedes all prior agreements and understandings.
+
+15. CONTACT
+For questions about this EULA, please visit:
+https://github.com/CaioBr3080/DLWave/issues
+
+By clicking "I Agree" or by installing/using the Software, you acknowledge that you have read this EULA, understand it, and agree to be bound by its terms.
+
+Copyright (c) 2026 caioa
+Licensed under the MIT License

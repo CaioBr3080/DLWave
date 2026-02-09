@@ -53,13 +53,6 @@ Para remover completamente os avisos do antivírus, o ideal é assinar digitalme
 
 **Repositório oficial:** https://github.com/caioa/DLWave
 
-## 📝 Nota para distribuição
-
-Se você for distribuir o DLWave para outras pessoas:
-- Considere adquirir um certificado de code signing
-- Crie uma página de FAQ explicando os avisos do antivírus
-- Ofereça hash SHA256 do instalador para verificação
-
 ## 🔗 Links Úteis
 
 - [yt-dlp (oficial)](https://github.com/yt-dlp/yt-dlp)
