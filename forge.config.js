@@ -5,12 +5,24 @@ module.exports = {
   packagerConfig: {
     asar: true,
     icon: './assets/icon', // Sem extensão - Electron escolhe .ico (Windows), .icns (Mac), .png (Linux)
+    
+    // Para assinar digitalmente (quando tiver certificado):
+    // win32metadata: {
+    //   CompanyName: 'Seu Nome/Empresa',
+    //   FileDescription: 'DLWave - YouTube Downloader',
+    //   ProductName: 'DLWave',
+    // }
   },
   rebuildConfig: {},
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
-      config: {},
+      config: {
+        // Para assinar digitalmente o instalador (quando tiver certificado .pfx):
+        // certificateFile: './certificado.pfx',
+        // certificatePassword: process.env.CERTIFICATE_PASSWORD,
+        // signWithParams: '/a /f certificado.pfx /p password /fd sha256 /tr http://timestamp.digicert.com /td sha256'
+      },
     },
     {
       name: '@electron-forge/maker-zip',

@@ -10,6 +10,23 @@ if (started) {
   app.quit();
 }
 
+// Impedir múltiplas instâncias do app
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  // Já existe uma instância rodando, sair
+  app.quit();
+} else {
+  // Quando alguém tentar abrir uma segunda instância, focar na janela existente
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    if (mainWindowGlobal) {
+      if (mainWindowGlobal.isMinimized()) mainWindowGlobal.restore();
+      mainWindowGlobal.focus();
+      mainWindowGlobal.show();
+    }
+  });
+}
+
 let mainWindowGlobal = null;
 const downloadProcesses = new Map(); // Map<tabId, process>
 const downloadCancelledFlags = new Map(); // Map<tabId, boolean>
@@ -17,9 +34,10 @@ let tray = null;
 
 // Configurar binPath assim que o app estiver pronto
 app.whenReady().then(() => {
-  // Em dev mode, usar o diretório do projeto, não o .vite/build
+  // Em dev mode, usar o diretório do projeto
+  // Em produção, usar userData (AppData\Local\dlwave\bin)
   const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
-  const appPath = isDev ? process.cwd() : app.getAppPath();
+  const appPath = isDev ? process.cwd() : app.getPath('userData');
   const binDirectory = path.join(appPath, 'bin');
   setBinPath(binDirectory);
   
@@ -1111,7 +1129,7 @@ ipcMain.handle("cancel-download", async (event, tabId) => {
 ipcMain.handle("save-preferences", async (event, prefs) => {
   try {
     const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
-    const appPath = isDev ? process.cwd() : app.getAppPath();
+    const appPath = isDev ? process.cwd() : app.getPath('userData');
     const prefsPath = path.join(appPath, 'preferences.json');
     
     fs.writeFileSync(prefsPath, JSON.stringify(prefs, null, 2), 'utf-8');
@@ -1126,7 +1144,7 @@ ipcMain.handle("save-preferences", async (event, prefs) => {
 ipcMain.handle("load-preferences", async () => {
   try {
     const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
-    const appPath = isDev ? process.cwd() : app.getAppPath();
+    const appPath = isDev ? process.cwd() : app.getPath('userData');
     const prefsPath = path.join(appPath, 'preferences.json');
     
     if (fs.existsSync(prefsPath)) {

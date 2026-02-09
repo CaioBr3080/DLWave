@@ -4,7 +4,6 @@
   "version": "1.0.0",
   "description": "Downloader de vídeos e áudios do YouTube com yt-dlp e ffmpeg",
   "main": ".vite/build/main.js",
-  "private": true,
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
@@ -12,9 +11,25 @@
     "publish": "electron-forge publish",
     "lint": "echo \"No linting configured\""
   },
-  "keywords": [],
+  "keywords": [
+    "youtube",
+    "downloader",
+    "yt-dlp",
+    "ffmpeg",
+    "electron",
+    "video-downloader",
+    "audio-downloader"
+  ],
   "author": "caioa",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/caioa/DLWave.git"
+  },
+  "bugs": {
+    "url": "https://github.com/caioa/DLWave/issues"
+  },
+  "homepage": "https://github.com/caioa/DLWave#readme",
   "devDependencies": {
     "@electron-forge/cli": "^7.11.1",
     "@electron-forge/maker-deb": "^7.11.1",
