@@ -1,4 +1,9 @@
 // ============================================
+// SISTEMA DE TRADUÇÕES
+// ============================================
+import { t, setLanguage, currentLanguage } from './translations.js';
+
+// ============================================
 // SISTEMA DE TABS - GERENCIADOR
 // ============================================
 
@@ -32,11 +37,11 @@ class TabManager {
         
         const userConfirmed = await showConfirmDialog({
           type: 'warning',
-          title: 'Downloads em andamento',
-          message: `Há ${activeDownloads.length} Wave(s) com download ativo:`,
-          detail: `${tabList}\n\nFechar o aplicativo irá cancelar todos os downloads. Deseja continuar?`,
-          cancelLabel: 'Cancelar',
-          confirmLabel: 'Fechar Aplicativo'
+          title: t('downloadsActiveTitle'),
+          message: t('downloadsActiveMessage', { count: activeDownloads.length }),
+          detail: `${tabList}\n\n${t('downloadsActiveDetail')}`,
+          cancelLabel: t('cancel'),
+          confirmLabel: t('closeApp')
         });
         
         return userConfirmed;
@@ -68,7 +73,7 @@ class TabManager {
   }
   
   getNextTabName() {
-    return 'Nova Wave';
+    return t('newTab');
   }
   
   async createTab(name, autoActivate = true) {
@@ -217,21 +222,21 @@ class TabManager {
     // Formatos disponíveis
     const formats = {
       video: [
-        { value: 'mp4', label: 'MP4 (Recomendado)' },
-        { value: 'mkv', label: 'MKV (Alta Qualidade)' },
-        { value: 'webm', label: 'WEBM' },
-        { value: 'avi', label: 'AVI' },
-        { value: 'mov', label: 'MOV' },
-        { value: 'flv', label: 'FLV' }
+        { value: 'mp4', label: t('formatMp4') },
+        { value: 'mkv', label: t('formatMkv') },
+        { value: 'webm', label: t('formatWebm') },
+        { value: 'avi', label: t('formatAvi') },
+        { value: 'mov', label: t('formatMov') },
+        { value: 'flv', label: t('formatFlv') }
       ],
       audio: [
-        { value: 'mp3', label: 'MP3 (Recomendado)' },
-        { value: 'm4a', label: 'M4A (AAC)' },
-        { value: 'opus', label: 'OPUS (Alta Qualidade)' },
-        { value: 'flac', label: 'FLAC (Sem Perda)' },
-        { value: 'wav', label: 'WAV' },
-        { value: 'aac', label: 'AAC' },
-        { value: 'ogg', label: 'OGG Vorbis' }
+        { value: 'mp3', label: t('formatMp3') },
+        { value: 'm4a', label: t('formatM4a') },
+        { value: 'opus', label: t('formatOpus') },
+        { value: 'flac', label: t('formatFlac') },
+        { value: 'wav', label: t('formatWav') },
+        { value: 'aac', label: t('formatAac') },
+        { value: 'ogg', label: t('formatOgg') }
       ]
     };
     
@@ -412,21 +417,21 @@ class TabManager {
       const currentType = state.type || 'video';
       const formats = {
         video: [
-          { value: 'mp4', label: 'MP4 (Recomendado)' },
-          { value: 'mkv', label: 'MKV (Alta Qualidade)' },
-          { value: 'webm', label: 'WEBM' },
-          { value: 'avi', label: 'AVI' },
-          { value: 'mov', label: 'MOV' },
-          { value: 'flv', label: 'FLV' }
+          { value: 'mp4', label: t('formatMp4') },
+          { value: 'mkv', label: t('formatMkv') },
+          { value: 'webm', label: t('formatWebm') },
+          { value: 'avi', label: t('formatAvi') },
+          { value: 'mov', label: t('formatMov') },
+          { value: 'flv', label: t('formatFlv') }
         ],
         audio: [
-          { value: 'mp3', label: 'MP3 (Recomendado)' },
-          { value: 'm4a', label: 'M4A (AAC)' },
-          { value: 'opus', label: 'OPUS (Alta Qualidade)' },
-          { value: 'flac', label: 'FLAC (Sem Perda)' },
-          { value: 'wav', label: 'WAV' },
-          { value: 'aac', label: 'AAC' },
-          { value: 'ogg', label: 'OGG Vorbis' }
+          { value: 'mp3', label: t('formatMp3') },
+          { value: 'm4a', label: t('formatM4a') },
+          { value: 'opus', label: t('formatOpus') },
+          { value: 'flac', label: t('formatFlac') },
+          { value: 'wav', label: t('formatWav') },
+          { value: 'aac', label: t('formatAac') },
+          { value: 'ogg', label: t('formatOgg') }
         ]
       };
       
@@ -469,11 +474,11 @@ class TabManager {
       // Pedir confirmação com diálogo customizado
       const userConfirmed = await showConfirmDialog({
         type: 'warning',
-        title: 'Download em andamento',
-        message: `A Wave "${tab.name}" está com download ativo.`,
-        detail: 'Fechar esta Wave irá cancelar o download. Deseja continuar?',
-        cancelLabel: 'Cancelar',
-        confirmLabel: 'Fechar Wave'
+        title: t('closeTabTitle'),
+        message: t('closeTabMessage'),
+        detail: t('closeTabDetail'),
+        cancelLabel: t('cancel'),
+        confirmLabel: t('closeTab')
       });
       
       if (!userConfirmed) {
@@ -943,16 +948,16 @@ class ProfileManager {
   
   async saveCurrentTabAsProfile() {
     if (!tabManager || !tabManager.activeTabId) {
-      alert('Nenhuma tab ativa para salvar como perfil!');
+      alert(t('noActiveTab'));
       return;
     }
     
     const profileName = await showInputDialog({
-      title: 'Novo Perfil',
-      message: 'Digite o nome do perfil de download:',
-      placeholder: 'Ex: Video 1080p, Audio MP3, etc.',
-      okLabel: 'Salvar',
-      cancelLabel: 'Cancelar'
+      title: t('newProfileTitle'),
+      message: t('newProfileMessage'),
+      placeholder: t('newProfilePlaceholder'),
+      okLabel: t('save'),
+      cancelLabel: t('cancel')
     });
     
     if (!profileName) return;
@@ -976,7 +981,7 @@ class ProfileManager {
   
   loadProfile(profileName) {
     if (!tabManager || !tabManager.activeTabId) {
-      alert('Nenhuma tab ativa para aplicar o perfil!');
+      alert(t('noActiveTabApply'));
       return;
     }
     
@@ -1030,17 +1035,17 @@ class ProfileManager {
   
   async renameProfile(oldName) {
     const newName = await showInputDialog({
-      title: 'Renomear Perfil',
-      message: 'Digite o novo nome do perfil:',
+      title: t('renameProfileTitle'),
+      message: t('renameProfileMessage'),
       defaultValue: oldName,
-      okLabel: 'Renomear',
-      cancelLabel: 'Cancelar'
+      okLabel: t('renameProfile'),
+      cancelLabel: t('cancel')
     });
     
     if (!newName || newName === oldName) return;
     
     if (this.profiles.has(newName)) {
-      alert('Já existe um perfil com este nome!');
+      alert(t('profileExists'));
       return;
     }
     
@@ -1055,11 +1060,11 @@ class ProfileManager {
   async deleteProfile(profileName) {
     const confirmed = await showConfirmDialog({
       type: 'warning',
-      title: 'Excluir Perfil',
-      message: `Tem certeza que deseja excluir o perfil "${profileName}"?`,
-      detail: 'Esta ação não pode ser desfeita.',
-      cancelLabel: 'Cancelar',
-      confirmLabel: 'Excluir'
+      title: t('deleteProfileTitle'),
+      message: `${t('deleteProfileMessage')} "${profileName}"?`,
+      detail: t('deleteProfileDetail'),
+      cancelLabel: t('cancel'),
+      confirmLabel: t('deleteProfile')
     });
     
     if (!confirmed) return;
@@ -1130,10 +1135,125 @@ class ProfileManager {
   }
 }
 
+// ============================================
+// ATUALIZAÇÃO DE INTERFACE COM TRADUÇÕES
+// ============================================
+
+function updateInterfaceLanguage() {
+  // Top bar
+  document.querySelector('.app-title span').textContent = t('appTitle');
+  document.querySelector('#btnSettings').title = t('settings');
+  
+  // Tabs
+  document.querySelector('#btnNewTab').title = t('newTab');
+  document.querySelector('#contextMenuRename').textContent = t('renameTab');
+  document.querySelector('#contextMenuClose').textContent = t('closeTab');
+  
+  // Profile context menu
+  document.querySelector('#profileMenuRename').textContent = t('renameProfile');
+  document.querySelector('#profileMenuDelete').textContent = t('deleteProfile');
+  
+  // Profiles sidebar
+  document.querySelector('.profiles-title').textContent = t('profilesTitle');
+  document.querySelector('#btnSaveProfile').textContent = t('saveProfile');
+  document.querySelector('#btnSaveProfile').title = t('saveProfile');
+  
+  // Atualizar template das tabs (será usado para novas tabs)
+  const template = document.querySelector('#tabTemplate');
+  if (template) {
+    const content = template.content;
+    
+    // Title
+    const h1 = content.querySelector('h1');
+    if (h1) h1.textContent = t('pageTitle');
+    
+    const subtitle = content.querySelector('.subtitle');
+    if (subtitle) subtitle.textContent = t('pageSubtitle');
+    
+    // Labels
+    const labels = content.querySelectorAll('label');
+    if (labels[0]) labels[0].textContent = t('urlLabel');
+    if (labels[1]) labels[1].querySelector('span').textContent = t('ignorePlaylist');
+    if (labels[2]) labels[2].textContent = t('downloadType');
+    if (labels[3]) labels[3].textContent = t('format');
+    if (labels[4]) labels[4].textContent = t('resolution');
+    if (labels[5]) labels[5].textContent = t('downloadPath');
+    
+    // Input placeholder
+    const urlInput = content.querySelector('.url-input');
+    if (urlInput) urlInput.placeholder = t('urlPlaceholder');
+    
+    // Ignore playlist label
+    const ignoreLabel = content.querySelector('.ignore-playlist-label');
+    if (ignoreLabel) ignoreLabel.title = t('ignorePlaylistTooltip');
+    
+    // No folder selected
+    const pathDisplay = content.querySelector('.path-display');
+    if (pathDisplay) pathDisplay.textContent = t('noFolderSelected');
+    
+    // Buttons
+    const btnBrowse = content.querySelector('.btn-browse');
+    if (btnBrowse) btnBrowse.textContent = t('chooseFolder');
+    
+    const btnOpenFolder = content.querySelector('.btn-open-folder');
+    if (btnOpenFolder) btnOpenFolder.title = t('openFolder');
+    
+    const btnDownload = content.querySelector('.btn-download');
+    if (btnDownload) btnDownload.textContent = t('startDownload');
+    
+    const btnCancel = content.querySelector('.btn-cancel-download');
+    if (btnCancel) btnCancel.textContent = t('cancelDownload');
+  }
+  
+  // Atualizar tabs existentes
+  if (tabManager) {
+    tabManager.tabs.forEach((tabData, tabId) => {
+      const content = tabData.content;
+      if (!content) return;
+      
+      // Labels
+      const labels = content.querySelectorAll('label');
+      if (labels[0]) labels[0].childNodes[0].textContent = t('urlLabel');
+      if (labels[1]) {
+        const span = labels[1].querySelector('span');
+        if (span) span.textContent = t('ignorePlaylist');
+      }
+      if (labels[2]) labels[2].childNodes[0].textContent = t('downloadType');
+      if (labels[3]) labels[3].childNodes[0].textContent = t('format');
+      if (labels[4]) labels[4].childNodes[0].textContent = t('resolution');
+      if (labels[5]) labels[5].childNodes[0].textContent = t('downloadPath');
+      
+      // Input placeholder
+      const urlInput = content.querySelector('.url-input');
+      if (urlInput && !urlInput.value) {
+        urlInput.placeholder = t('urlPlaceholder');
+      }
+      
+      // Buttons
+      const btnBrowse = content.querySelector('.btn-browse');
+      if (btnBrowse) btnBrowse.textContent = t('chooseFolder');
+      
+      const btnDownload = content.querySelector('.btn-download');
+      if (btnDownload && btnDownload.style.display !== 'none') {
+        btnDownload.textContent = t('startDownload');
+      }
+      
+      const btnCancel = content.querySelector('.btn-cancel-download');
+      if (btnCancel && btnCancel.style.display !== 'none') {
+        btnCancel.textContent = t('cancelDownload');
+      }
+    });
+  }
+}
+
 // Inicializar gerenciador de tabs
 let tabManager;
 let profileManager;
 window.addEventListener('DOMContentLoaded', () => {
+  // IMPORTANTE: Atualizar idioma ANTES de criar tabs
+  // para que o template já esteja traduzido
+  updateInterfaceLanguage();
+  
   tabManager = new TabManager();
   profileManager = new ProfileManager();
 });
@@ -1309,19 +1429,19 @@ function showFileInUseWarning(fileName) {
     <div class="confirm-modal">
       <div class="confirm-header" style="background: linear-gradient(135deg, #f44336, #e91e63);">
         <span class="confirm-icon">🔒</span>
-        <h3>Arquivo em Uso</h3>
+        <h3>${t('fileInUseTitle')}</h3>
       </div>
       <div class="confirm-body">
-        <p style="margin-bottom: 15px;">O arquivo não pôde ser salvo porque está sendo usado por outro aplicativo.</p>
+        <p style="margin-bottom: 15px;">${t('fileInUseMessage')}</p>
         <p style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 5px; word-break: break-all;">
-          <strong>Arquivo:</strong><br>${fileName}
+          <strong>${t('fileInUseFile')}</strong><br>${fileName}
         </p>
         <p style="margin-top: 15px; font-size: 13px; opacity: 0.8;">
-          Feche o programa que está usando o arquivo e tente novamente.
+          ${t('fileInUseDetail')}
         </p>
       </div>
       <div class="confirm-buttons">
-        <button class="confirm-btn confirm-btn-ok" style="background: #4CAF50; flex: 1;">Entendi</button>
+        <button class="confirm-btn confirm-btn-ok" style="background: #4CAF50; flex: 1;">${t('understood')}</button>
       </div>
     </div>
   `;
@@ -1438,6 +1558,17 @@ async function showSettingsModal() {
             </div>
           </div>
           
+          <div class="settings-section" style="margin-top: 20px;">
+            <h4>Idioma / Language</h4>
+            <p class="settings-description">Interface language / Idioma da interface</p>
+            <div style="margin-top: 10px;">
+              <select id="languageSelect" style="width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; color: #fff; border-radius: 4px; font-size: 14px;">
+                <option value="pt-BR">Portugu\u00eas (Brasil)</option>
+                <option value="en">English</option>
+              </select>
+            </div>
+          </div>
+          
           <button class="btn-save-prefs" id="btnSavePrefs" style="margin-top: 20px;" title="Salva as preferências globais e o estado atual de todas as Waves (nome, URL, pasta, configurações)">Salvar Preferências</button>
         </div>
       </div>
@@ -1471,6 +1602,10 @@ async function showSettingsModal() {
   const cookiesFilePathInput = modal.querySelector('#cookiesFilePath');
   const btnSelectCookies = modal.querySelector('#btnSelectCookies');
   const btnClearCookies = modal.querySelector('#btnClearCookies');
+  const languageSelect = modal.querySelector('#languageSelect');
+  
+  // Definir idioma atual no select
+  languageSelect.value = currentLanguage;
   
   if (savedPrefs) {
     if (savedPrefs.allowLowerQuality) {
@@ -1523,6 +1658,13 @@ async function showSettingsModal() {
   btnClearCookies.addEventListener('click', () => {
     cookiesFilePathInput.value = '';
     btnClearCookies.style.display = 'none';
+  });
+  
+  // Listener para mudança de idioma
+  languageSelect.addEventListener('change', () => {
+    const newLang = languageSelect.value;
+    setLanguage(newLang);
+    updateInterfaceLanguage();
   });
   
   // Botão salvar
