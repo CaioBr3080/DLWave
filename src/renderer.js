@@ -109,9 +109,11 @@ class TabManager {
     const verificacao = document.getElementById(`content-${tabId}`);
     console.log(`Tab ${tabId} adicionada ao DOM? ${verificacao ? 'SIM' : 'NÃO'}`);
     
-    // Carregar preferência global de ignorar playlist
+    // Carregar preferências globais
     const savedPrefs = await window.api.loadPreferences();
     const ignorePlaylistDefault = savedPrefs?.ignorePlaylistGlobal || false;
+    
+    console.log('🆕 Criando nova tab - savedPrefs:', savedPrefs);
     
     // Criar dados da tab
     const tabData = {
@@ -126,11 +128,12 @@ class TabManager {
         resolution: 'best',
         downloadPath: '',
         ignorePlaylist: ignorePlaylistDefault,
-        allowLowerQuality: false,
+        allowLowerQuality: false, // Padrão sempre false (sempre perguntar)
         isPlaylistDownload: false,
         playlistItems: [],
         currentItem: 0,
-        downloadProcess: null
+        downloadProcess: null,
+        cancelRequested: false
       }
     };
     
@@ -205,20 +208,74 @@ class TabManager {
     }
     
     // Botão de qualidade inferior
-    btnQualityWarning.addEventListener('click', () => {
-      state.allowLowerQuality = !state.allowLowerQuality;
-      if (state.allowLowerQuality) {
-        btnQualityWarning.style.color = '#4caf50';
-        btnQualityWarning.style.borderColor = '#4caf50';
-        btnQualityWarning.title = 'Permitir qualidade inferior: ATIVADO';
-        this.logToTab(id, 'ℹ️ Modo "Permitir qualidade inferior" ativado', 'info');
+    btnQualityWarning.addEventListener('click', async () => {
+      // Verificar se há download em andamento
+      const isDownloading = btnCancelDownload && btnCancelDownload.style.display !== 'none';
+      
+      if (isDownloading) {
+        // Cancelar download atual e reiniciar com nova configuração
+        const newValue = !state.allowLowerQuality;
+        const action = newValue ? 'ativar' : 'desativar';
+        
+        const confirmed = await showConfirmDialog({
+          type: 'warning',
+          title: 'Download em andamento',
+          message: `Deseja ${action} "Permitir qualidade inferior" e reiniciar o download?`,
+          detail: 'O download será cancelado e reiniciado do zero com a nova configuração.',
+          cancelLabel: 'Não',
+          confirmLabel: 'Sim, reiniciar'
+        });
+        
+        if (confirmed) {
+          // Cancelar download
+          await this.cancelDownload(id);
+          
+          // Atualizar configuração
+          state.allowLowerQuality = newValue;
+          if (state.allowLowerQuality) {
+            btnQualityWarning.style.color = '#4caf50';
+            btnQualityWarning.style.borderColor = '#4caf50';
+            btnQualityWarning.title = 'Permitir qualidade inferior: ATIVADO';
+          } else {
+            btnQualityWarning.style.color = '#999';
+            btnQualityWarning.style.borderColor = '#3a3a3a';
+            btnQualityWarning.title = 'Permitir qualidade inferior: DESATIVADO';
+          }
+          this.saveTabsState();
+          
+          // Reiniciar download
+          this.logToTab(id, `ℹ️ Reiniciando download com "Permitir qualidade inferior" ${state.allowLowerQuality ? 'ativado' : 'desativado'}...`, 'info');
+          await new Promise(resolve => setTimeout(resolve, 500)); // Pequeno delay para garantir cancelamento
+          await this.startDownload(id);
+        }
       } else {
-        btnQualityWarning.style.color = '#999';
-        btnQualityWarning.style.borderColor = '#3a3a3a';
-        btnQualityWarning.title = 'Permitir qualidade inferior: DESATIVADO';
-        this.logToTab(id, 'ℹ️ Modo "Permitir qualidade inferior" desativado', 'info');
+        // Sem download em andamento - apenas alternar
+        state.allowLowerQuality = !state.allowLowerQuality;
+        if (state.allowLowerQuality) {
+          btnQualityWarning.style.color = '#4caf50';
+          btnQualityWarning.style.borderColor = '#4caf50';
+          btnQualityWarning.title = 'Permitir qualidade inferior: ATIVADO';
+          this.logToTab(id, 'ℹ️ Modo "Permitir qualidade inferior" ativado', 'info');
+        } else {
+          btnQualityWarning.style.color = '#999';
+          btnQualityWarning.style.borderColor = '#3a3a3a';
+          btnQualityWarning.title = 'Permitir qualidade inferior: DESATIVADO';
+          this.logToTab(id, 'ℹ️ Modo "Permitir qualidade inferior" desativado', 'info');
+        }
+        this.saveTabsState();
       }
     });
+    
+    // Inicializar aparência visual do botão baseado no estado inicial
+    if (state.allowLowerQuality) {
+      btnQualityWarning.style.color = '#4caf50';
+      btnQualityWarning.style.borderColor = '#4caf50';
+      btnQualityWarning.title = 'Permitir qualidade inferior: ATIVADO';
+    } else {
+      btnQualityWarning.style.color = '#999';
+      btnQualityWarning.style.borderColor = '#3a3a3a';
+      btnQualityWarning.title = 'Permitir qualidade inferior: DESATIVADO';
+    }
     
     // Formatos disponíveis
     const formats = {
@@ -460,6 +517,20 @@ class TabManager {
       ignorePlaylistCheckbox.checked = state.ignorePlaylist || false;
     }
     
+    // Restaurar aparência do botão allowLowerQuality
+    const btnQualityWarning = content.querySelector('.btn-quality-warning');
+    if (btnQualityWarning) {
+      if (state.allowLowerQuality) {
+        btnQualityWarning.style.color = '#4caf50';
+        btnQualityWarning.style.borderColor = '#4caf50';
+        btnQualityWarning.title = 'Permitir qualidade inferior: ATIVADO';
+      } else {
+        btnQualityWarning.style.color = '#999';
+        btnQualityWarning.style.borderColor = '#3a3a3a';
+        btnQualityWarning.title = 'Permitir qualidade inferior: DESATIVADO';
+      }
+    }
+    
     console.log(`Restauração concluída para tab ${tabId}`);
   }
   
@@ -627,7 +698,8 @@ class TabManager {
           format: tab.state.format || 'mp4',
           resolution: tab.state.resolution || 'best',
           downloadPath: tab.state.downloadPath || '',
-          ignorePlaylist: tab.state.ignorePlaylist || false
+          ignorePlaylist: tab.state.ignorePlaylist || false,
+          allowLowerQuality: tab.state.allowLowerQuality === true ? true : false
         }
       })),
       activeIndex: activeIndex >= 0 ? activeIndex : 0
@@ -672,6 +744,10 @@ class TabManager {
                 tab.state.resolution = tabData.state.resolution || 'best';
                 tab.state.downloadPath = tabData.state.downloadPath || '';
                 tab.state.ignorePlaylist = tabData.state.ignorePlaylist || false;
+                // Restaurar estado salvo da Wave OU usar false como padrão
+                tab.state.allowLowerQuality = tabData.state.allowLowerQuality === true ? true : false;
+                
+                console.log(`Tab ${tabId} restaurada com allowLowerQuality:`, tab.state.allowLowerQuality);
                 
                 // Atualizar elementos visuais com o estado carregado
                 this.restoreTabInputState(tabId);
@@ -731,10 +807,11 @@ class TabManager {
       return;
     }
     
-    // Atualizar UI
+    // Atualizar UI e resetar flag de cancelamento
     btnDownload.style.display = 'none';
     btnCancelDownload.style.display = 'inline-block';
     logArea.innerHTML = '';
+    state.cancelRequested = false;
     
     try {
       // Verificar se é playlist
@@ -745,6 +822,15 @@ class TabManager {
         this.logToTab(tabId, '🔍 Extraindo informações da playlist...', 'info');
         
         state.playlistItems = await window.api.getPlaylistInfo(state.url);
+        
+        // Verificar se foi cancelado durante a extração
+        if (state.cancelRequested) {
+          this.logToTab(tabId, '❌ Download cancelado', 'error');
+          btnDownload.style.display = 'inline-block';
+          btnCancelDownload.style.display = 'none';
+          return;
+        }
+        
         state.isPlaylistDownload = true;
         state.currentItem = 0;
         
@@ -758,6 +844,15 @@ class TabManager {
         if (!prefs?.noPlaylistFolder) {
           // Pedir nome da pasta
           folderName = await window.api.requestPlaylistFolderName(downloadPath);
+          
+          // Verificar se foi cancelado durante a solicitação do nome
+          if (state.cancelRequested) {
+            this.logToTab(tabId, '❌ Download cancelado', 'error');
+            btnDownload.style.display = 'inline-block';
+            btnCancelDownload.style.display = 'none';
+            return;
+          }
+          
           if (!folderName) {
             this.logToTab(tabId, '❌ Download cancelado', 'error');
             btnDownload.style.display = 'inline-block';
@@ -768,6 +863,9 @@ class TabManager {
           this.logToTab(tabId, 'ℹ️ Baixando playlist sem criar subpasta', 'info');
         }
         
+        // Se allowLowerQuality === false, o main process vai verificar cada vídeo individualmente
+        // Se allowLowerQuality === true, vai usar fallback automático para todos
+        
         // Iniciar download da playlist
         await window.api.startDownload(tabId, {
           url: state.url,
@@ -776,7 +874,7 @@ class TabManager {
           resolution: state.resolution,
           downloadPath: downloadPath,
           playlistFolderName: folderName,
-          allowLowerQuality: state.allowLowerQuality || false,
+          allowLowerQuality: state.allowLowerQuality,
           playlistItems: state.playlistItems,
           isPlaylist: true,
           ignorePlaylist: state.ignorePlaylist,
@@ -787,7 +885,42 @@ class TabManager {
           this.logToTab(tabId, 'ℹ️ Ignorando playlist - baixando apenas o item individual', 'info');
         }
         
+        // VERIFICAR RESOLUÇÃO (padrão: sempre perguntar)
+        // Só pula se allowLowerQuality === true OU for áudio OU resolução 'best'
+        const shouldCheckResolution = (
+          state.type === 'video' && 
+          state.resolution !== 'best' && 
+          state.allowLowerQuality !== true
+        );
+        
+        console.log('🔍 Decisão de verificação:', {
+          type: state.type,
+          resolution: state.resolution,
+          allowLowerQuality: state.allowLowerQuality,
+          shouldCheck: shouldCheckResolution
+        });
+        
+        if (shouldCheckResolution) {
+          this.logToTab(tabId, '🔍 Verificando disponibilidade da resolução escolhida...', 'info');
+          const resolutionOk = await window.api.checkResolution(state.url, state.resolution);
+          console.log('🔍 Resultado checkResolution:', resolutionOk);
+          if (!resolutionOk) {
+            this.logToTab(tabId, '❌ Download cancelado - resolução não disponível', 'error');
+            btnDownload.style.display = 'inline-block';
+            btnCancelDownload.style.display = 'none';
+            return;
+          }
+          this.logToTab(tabId, '✅ Resolução verificada - continuando...', 'success');
+        } else {
+          console.log('⏭️ Pulando verificação de resolução');
+        }
+        
         // Download único
+        console.log('📦 Enviando para download:', {
+          url: state.url.substring(0, 50),
+          resolution: state.resolution,
+          allowLowerQuality: state.allowLowerQuality
+        });
         await window.api.startDownload(tabId, {
           url: state.url,
           type: state.type,
@@ -795,7 +928,7 @@ class TabManager {
           resolution: state.resolution,
           downloadPath: downloadPath,
           playlistFolderName: null,
-          allowLowerQuality: state.allowLowerQuality || false,
+          allowLowerQuality: state.allowLowerQuality,
           isPlaylist: false,
           ignorePlaylist: state.ignorePlaylist,
           cookiesFilePath: prefs?.cookiesFilePath || ''
@@ -820,6 +953,9 @@ class TabManager {
     const tab = this.tabs.get(tabId);
     if (!tab) return;
     
+    // Marcar que foi solicitado cancelamento
+    tab.state.cancelRequested = true;
+    
     this.logToTab(tabId, '🛑 Cancelando download...', 'info');
     
     const btnCancelDownload = tab.content.querySelector('.btn-cancel-download');
@@ -840,19 +976,19 @@ class TabManager {
     const tab = this.tabs.get(tabId);
     if (!tab) return;
     
-    const queueArea = tab.content.querySelector('.queue-area');
     const queueContent = tab.content.querySelector('.queue-content');
     const queueCount = tab.content.querySelector('.queue-count');
     
     if (tab.state.isPlaylistDownload && tab.state.playlistItems.length > 0) {
-      queueArea.style.display = 'flex';
-      
       const current = tab.state.currentItem;
       const total = tab.state.playlistItems.length;
       const currentTitle = tab.state.playlistItems[current]?.title || 'Carregando...';
       
       queueContent.textContent = currentTitle;
       queueCount.textContent = `${current + 1}/${total}`;
+    } else {
+      queueContent.textContent = 'Nenhum item na fila';
+      queueCount.textContent = '0/0';
     }
   }
   
@@ -860,8 +996,13 @@ class TabManager {
     const tab = this.tabs.get(tabId);
     if (!tab) return;
     
-    const queueArea = tab.content.querySelector('.queue-area');
-    queueArea.style.display = 'none';
+    const queueContent = tab.content.querySelector('.queue-content');
+    const queueCount = tab.content.querySelector('.queue-count');
+    
+    // Resetar para estado padrão mas manter visível
+    queueContent.textContent = 'Nenhum item na fila';
+    queueCount.textContent = '0/0';
+    
     tab.state.isPlaylistDownload = false;
     tab.state.playlistItems = [];
     tab.state.currentItem = 0;
@@ -1509,14 +1650,6 @@ async function showSettingsModal() {
           
           <div class="settings-checkbox">
             <label>
-              <input type="checkbox" id="allowLowerQuality" />
-              <span>Permitir qualidade inferior</span>
-            </label>
-            <p class="checkbox-description">Não perguntar quando a resolução escolhida não estiver disponível</p>
-          </div>
-          
-          <div class="settings-checkbox">
-            <label>
               <input type="checkbox" id="ignorePlaylistGlobal" />
               <span>Ignorar playlists por padrão</span>
             </label>
@@ -1560,6 +1693,27 @@ async function showSettingsModal() {
           </div>
           
           <div class="settings-section" style="margin-top: 20px;">
+            <h4>Navegador para Cookies (Anti-Bot)</h4>
+            <p class="settings-description">Importa cookies automaticamente do navegador selecionado para evitar detecção de bot. Você precisa estar logado no YouTube neste navegador.</p>
+            <div style="margin-top: 10px;">
+              <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; cursor: pointer;">
+                <input type="checkbox" id="useBrowserCookiesCheckbox" style="width: 18px; height: 18px; cursor: pointer;">
+                <span style="font-size: 14px; color: #e0e0e0;">Usar cookies do navegador automaticamente</span>
+              </label>
+              <select id="browserSelect" style="width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; color: #fff; border-radius: 4px; font-size: 14px;">
+                <option value="auto">Auto-detectar (recomendado)</option>
+                <option value="chrome">Google Chrome</option>
+                <option value="edge">Microsoft Edge</option>
+                <option value="brave">Brave Browser</option>
+                <option value="firefox">Mozilla Firefox</option>
+                <option value="opera">Opera</option>
+                <option value="safari">Safari (macOS)</option>
+              </select>
+              <p style="font-size: 12px; color: #999; margin-top: 8px;">Se você não usa nenhum desses navegadores ou tem problemas, use a opção de "Arquivo de Cookies" acima.</p>
+            </div>
+          </div>
+          
+          <div class="settings-section" style="margin-top: 20px;">
             <h4>Idioma / Language</h4>
             <p class="settings-description">Interface language / Idioma da interface</p>
             <div style="margin-top: 10px;">
@@ -1571,6 +1725,11 @@ async function showSettingsModal() {
           </div>
           
           <button class="btn-save-prefs" id="btnSavePrefs" style="margin-top: 20px;" title="Salva as preferências globais e o estado atual de todas as Waves (nome, URL, pasta, configurações)">Salvar Preferências</button>
+          
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #3a3a3a;">
+            <h4 style="color: #f44336; margin-bottom: 10px;">⚠️ Zona de Perigo</h4>
+            <button class="btn-save-prefs" id="btnResetAll" style="background: #f44336; margin-top: 10px;" title="Remove TODAS as configurações e tabs salvas. Use se algo estiver com comportamento estranho.">🗑️ Resetar Tudo (Limpar Cache)</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1593,7 +1752,8 @@ async function showSettingsModal() {
   
   // Carregar preferências salvas
   const savedPrefs = await window.api.loadPreferences();
-  const allowLowerQualityCheckbox = modal.querySelector('#allowLowerQuality');
+  console.log('🔧 Preferências carregadas no modal:', savedPrefs);
+  
   const ignorePlaylistGlobalCheckbox = modal.querySelector('#ignorePlaylistGlobal');
   const minimizeToTrayCheckbox = modal.querySelector('#minimizeToTray');
   const noPlaylistFolderCheckbox = modal.querySelector('#noPlaylistFolder');
@@ -1603,32 +1763,36 @@ async function showSettingsModal() {
   const cookiesFilePathInput = modal.querySelector('#cookiesFilePath');
   const btnSelectCookies = modal.querySelector('#btnSelectCookies');
   const btnClearCookies = modal.querySelector('#btnClearCookies');
+  const browserSelect = modal.querySelector('#browserSelect');
+  const useBrowserCookiesCheckbox = modal.querySelector('#useBrowserCookiesCheckbox');
   const languageSelect = modal.querySelector('#languageSelect');
   
   // Definir idioma atual no select
   languageSelect.value = currentLanguage;
   
-  if (savedPrefs) {
-    if (savedPrefs.allowLowerQuality) {
-      allowLowerQualityCheckbox.checked = true;
-    }
-    if (savedPrefs.ignorePlaylistGlobal) {
-      ignorePlaylistGlobalCheckbox.checked = true;
-    }
-    if (savedPrefs.minimizeToTray) {
-      minimizeToTrayCheckbox.checked = true;
-    }
-    if (savedPrefs.noPlaylistFolder) {
-      noPlaylistFolderCheckbox.checked = true;
-    }
-    if (savedPrefs.defaultDownloadPath) {
-      defaultDownloadPathInput.value = savedPrefs.defaultDownloadPath;
-      btnClearDefaultPath.style.display = 'inline-block';
-    }
-    if (savedPrefs.cookiesFilePath) {
-      cookiesFilePathInput.value = savedPrefs.cookiesFilePath;
-      btnClearCookies.style.display = 'inline-block';
-    }
+  // Definir navegador salvo
+  browserSelect.value = savedPrefs?.browserForCookies || 'auto';
+  
+  // Sempre definir o estado dos checkboxes explicitamente
+  ignorePlaylistGlobalCheckbox.checked = savedPrefs?.ignorePlaylistGlobal ?? false;
+  minimizeToTrayCheckbox.checked = savedPrefs?.minimizeToTray ?? false;
+  noPlaylistFolderCheckbox.checked = savedPrefs?.noPlaylistFolder ?? false;
+  useBrowserCookiesCheckbox.checked = savedPrefs?.useBrowserCookies ?? true; // Default: true
+  
+  console.log('🎛️ Checkboxes configurados:', {
+    ignorePlaylistGlobal: ignorePlaylistGlobalCheckbox.checked,
+    minimizeToTray: minimizeToTrayCheckbox.checked,
+    noPlaylistFolder: noPlaylistFolderCheckbox.checked,
+    useBrowserCookies: useBrowserCookiesCheckbox.checked
+  });
+  
+  if (savedPrefs?.defaultDownloadPath) {
+    defaultDownloadPathInput.value = savedPrefs.defaultDownloadPath;
+    btnClearDefaultPath.style.display = 'inline-block';
+  }
+  if (savedPrefs?.cookiesFilePath) {
+    cookiesFilePathInput.value = savedPrefs.cookiesFilePath;
+    btnClearCookies.style.display = 'inline-block';
   }
   
   // Botão para selecionar pasta padrão
@@ -1671,18 +1835,17 @@ async function showSettingsModal() {
   // Botão salvar
   modal.querySelector('#btnSavePrefs').addEventListener('click', async () => {
     const prefs = {
-      allowLowerQuality: allowLowerQualityCheckbox.checked,
       ignorePlaylistGlobal: ignorePlaylistGlobalCheckbox.checked,
       minimizeToTray: minimizeToTrayCheckbox.checked,
       noPlaylistFolder: noPlaylistFolderCheckbox.checked,
       defaultDownloadPath: defaultDownloadPathInput.value || '',
-      cookiesFilePath: cookiesFilePathInput.value || ''
+      cookiesFilePath: cookiesFilePathInput.value || '',
+      browserForCookies: browserSelect.value || 'auto',
+      useBrowserCookies: useBrowserCookiesCheckbox.checked
     };
     
+    console.log('🔧 Salvando preferências (renderer):', prefs);
     await window.api.savePreferences(prefs);
-    
-    // Salvar estado atual das tabs também
-    tabManager.saveTabsState();
     
     // Feedback visual
     const btn = modal.querySelector('#btnSavePrefs');
@@ -1694,6 +1857,57 @@ async function showSettingsModal() {
       btn.textContent = originalText;
       btn.style.background = '';
     }, 2000);
+  });
+  
+  // Botão resetar tudo
+  modal.querySelector('#btnResetAll').addEventListener('click', async () => {
+    const confirmed = await showConfirmDialog({
+      type: 'warning',
+      title: '⚠️ Resetar Tudo',
+      message: 'Isso vai DELETAR todas as configurações, preferências e tabs salvas!',
+      detail: 'O app será recarregado com configurações padrão. Esta ação não pode ser desfeita.',
+      cancelLabel: 'Cancelar',
+      confirmLabel: 'Sim, Resetar Tudo'
+    });
+    
+    if (confirmed) {
+      // Cancelar todos os downloads ativos primeiro
+      const activeDownloads = [];
+      for (const [tabId, tab] of tabManager.tabs) {
+        const btnCancelDownload = tab.content.querySelector('.btn-cancel-download');
+        const isDownloading = btnCancelDownload && btnCancelDownload.style.display !== 'none';
+        if (isDownloading) {
+          activeDownloads.push(tabId);
+        }
+      }
+      
+      if (activeDownloads.length > 0) {
+        console.log(`🛑 Cancelando ${activeDownloads.length} download(s) ativo(s)...`);
+        for (const tabId of activeDownloads) {
+          await tabManager.cancelDownload(tabId);
+        }
+        // Aguardar um pouco para garantir que foram cancelados
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
+      // Limpar localStorage
+      localStorage.clear();
+      console.log('🗑️ localStorage limpo');
+      
+      // Resetar preferências via IPC
+      await window.api.savePreferences({
+        ignorePlaylistGlobal: false,
+        minimizeToTray: false,
+        noPlaylistFolder: false,
+        defaultDownloadPath: '',
+        cookiesFilePath: ''
+      });
+      console.log('🗑️ Preferências resetadas');
+      
+      // Recarregar app
+      alert('✅ Tudo resetado! O app será recarregado agora.');
+      location.reload();
+    }
   });
   
   // Fechar ao clicar fora

@@ -806,20 +806,96 @@ ipcMain.handle("request-playlist-folder-name", async (event, basePath) => {
   });
 });
 
+// Função helper para carregar preferências localmente
+function loadPreferences() {
+  try {
+    const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+    const appPath = isDev ? process.cwd() : app.getPath('userData');
+    const prefsPath = path.join(appPath, 'preferences.json');
+    
+    if (fs.existsSync(prefsPath)) {
+      const data = fs.readFileSync(prefsPath, 'utf-8');
+      return JSON.parse(data);
+    }
+    return null;
+  } catch (error) {
+    console.error('Erro ao carregar preferências:', error);
+    return null;
+  }
+}
+
+// Função helper para detectar navegador para cookies
+function detectBrowser(userPreference = 'auto') {
+  // Se usuário escolheu um navegador específico, usar ele
+  if (userPreference && userPreference !== 'auto') {
+    console.log(`🍪 Navegador selecionado pelo usuário: ${userPreference}`);
+    return userPreference;
+  }
+  
+  // Auto-detect: verificar quais navegadores estão instalados
+  let browser = 'chrome'; // Padrão fallback
+  const edgePath = path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'Microsoft', 'Edge', 'Application', 'msedge.exe');
+  const chromePath = path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe');
+  const bravePath = path.join(process.env.LOCALAPPDATA || '', 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe');
+  const firefoxPath = path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'Mozilla Firefox', 'firefox.exe');
+  const operaPath = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Opera', 'opera.exe');
+  
+  if (fs.existsSync(bravePath)) {
+    browser = 'brave';
+  } else if (fs.existsSync(edgePath)) {
+    browser = 'edge';
+  } else if (fs.existsSync(chromePath)) {
+    browser = 'chrome';
+  } else if (fs.existsSync(firefoxPath)) {
+    browser = 'firefox';
+  } else if (fs.existsSync(operaPath)) {
+    browser = 'opera';
+  }
+  
+  console.log(`🍪 Navegador auto-detectado: ${browser}`);
+  return browser;
+}
+
 // Handler para extrair informações de playlist
 ipcMain.handle("get-playlist-info", async (event, url) => {
   return new Promise((resolve, reject) => {
     const ytdlpPath = path.join(binPath, 'yt-dlp.exe');
     
+    // Obter configuração do navegador
+    const prefs = loadPreferences();
+    const browser = detectBrowser(prefs?.browserForCookies || 'auto');
+    
     const args = [
       '--flat-playlist',
       '--print', '%(id)s|||%(title)s',  // Retornar ID e título separados por |||
       '--playlist-end', '1000',
-      url
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      '--add-header', 'Accept-Language:en-US,en;q=0.9',
+      '--add-header', 'Accept-Encoding:gzip, deflate, br',
+      '--add-header', 'Referer:https://www.youtube.com/',
+      '--extractor-args', 'youtube:player_client=web,web_creator;skip=translated_subs',
+      '--extractor-retries', '5',
+      '--fragment-retries', '5',
+      '--sleep-interval', '2',
+      '--max-sleep-interval', '5',
+      '--source-address', '0.0.0.0'
     ];
+    
+    // Adicionar cookies do navegador se habilitado nas preferências
+    const useBrowserCookies = prefs?.useBrowserCookies !== false; // Default: true
+    if (useBrowserCookies) {
+      console.log('🍪 Usando cookies do navegador:', browser);
+      args.push('--cookies-from-browser', browser);
+    } else {
+      console.log('⚠️ Cookies do navegador desabilitados nas preferências');
+    }
+    
+    args.push(url);
     
     const ytdlp = spawn(ytdlpPath, args);
     const items = [];
+    let errorOutput = '';
     
     ytdlp.stdout.on('data', (data) => {
       const lines = data.toString().split('\n');
@@ -838,15 +914,23 @@ ipcMain.handle("get-playlist-info", async (event, url) => {
       });
     });
     
+    ytdlp.stderr.on('data', (data) => {
+      errorOutput += data.toString();
+      console.error('yt-dlp stderr:', data.toString());
+    });
+    
     ytdlp.on('close', (code) => {
       if (code === 0) {
         resolve(items);
       } else {
-        reject(new Error(`Erro ao extrair playlist: código ${code}`));
+        const errorMsg = errorOutput.trim() || `Erro ao extrair playlist: código ${code}`;
+        console.error('Erro completo:', errorMsg);
+        reject(new Error(errorMsg));
       }
     });
     
     ytdlp.on('error', (error) => {
+      console.error('Erro ao executar yt-dlp:', error);
       reject(error);
     });
   });
@@ -863,14 +947,41 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
     const ytdlpPath = path.join(binPath, 'yt-dlp.exe');
     const requestedHeight = parseInt(resolution);
     
+    // Detectar browser para cookies
+    const prefs = loadPreferences();
+    const browser = detectBrowser(prefs?.browserForCookies || 'auto');
+    
     const shouldContinue = await new Promise((checkResolve) => {
-      let formatString = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]/bestvideo+bestaudio/best`;
+      let formatString = allowLowerQuality 
+        ? `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]/bestvideo+bestaudio/best`
+        : `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]`;
+      
       const checkArgs = [
         '-f', formatString,
         '--print', '%(height)s',
-        '--no-playlist',
-        url
+        '--no-playlist'
       ];
+      
+      // Adicionar cookies se habilitado
+      const useBrowserCookies = prefs?.useBrowserCookies !== false;
+      if (useBrowserCookies) {
+        checkArgs.push('--cookies-from-browser', browser);
+      }
+      
+      checkArgs.push(
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        '--add-header', 'Accept-Language:pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        '--add-header', 'Accept-Encoding:gzip, deflate, br',
+        '--add-header', 'Referer:https://www.youtube.com/',
+        '--extractor-args', 'youtube:player_client=web,web_creator;skip=translated_subs',
+        '--extractor-retries', '5',
+        '--fragment-retries', '5',
+        '--sleep-interval', '1',
+        '--max-sleep-interval', '5',
+        '--source-address', '0.0.0.0',
+        url
+      );
       
       const checkProcess = spawn(ytdlpPath, checkArgs);
       let detectedHeight = '';
@@ -1111,6 +1222,541 @@ ipcMain.handle("start-download", async (event, dados) => {
       }
     }
     
+    // Determinar se deve verificar cada vídeo da playlist individualmente
+    const shouldCheckEachVideo = dados.isPlaylist && playlistItems && !allowLowerQuality && type === 'video' && resolution !== 'best';
+    
+    if (shouldCheckEachVideo) {
+      // Processar playlist video por video com verificação de resolução
+      if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, `🎬 Processando playlist: ${playlistItems.length} vídeos`);
+        mainWindowGlobal.webContents.send('log', tabId, `⚙️ Verificando resolução disponível para cada vídeo...`);
+      }
+      
+      let downloadedCount = 0;
+      let skippedCount = 0;
+      let cancelledByUser = false;
+      
+      for (let i = 0; i < playlistItems.length; i++) {
+        if (downloadCancelledFlags.get(tabId)) {
+          cancelledByUser = true;
+          break;
+        }
+        
+        const item = playlistItems[i];
+        const videoUrl = item.url;
+        const videoTitle = item.title || `Vídeo ${i + 1}`;
+        
+        if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+          mainWindowGlobal.webContents.send('log', tabId, `\n[${i + 1}/${playlistItems.length}] ${videoTitle}`);
+        }
+        
+        try {
+          // Verificar resolução disponível do vídeo
+          const ytdlpPath = path.join(binPath, 'yt-dlp.exe');
+          const requestedHeight = parseInt(resolution);
+          
+          // Detectar browser para cookies
+          const prefs = loadPreferences();
+          const browser = detectBrowser(prefs?.browserForCookies || 'auto');
+          const useBrowserCookies = prefs?.useBrowserCookies !== false;
+          
+          // Primeiro: tentar com formato estrito (sem fallback)
+          const strictFormat = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]`;
+          const checkArgs1 = [
+            '-f', strictFormat,
+            '--print', '%(height)s',
+            '--no-playlist'
+          ];
+          
+          if (useBrowserCookies) {
+            checkArgs1.push('--cookies-from-browser', browser);
+          }
+          
+          checkArgs1.push(
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            '--add-header', 'Accept-Language:pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+            '--add-header', 'Accept-Encoding:gzip, deflate, br',
+            '--add-header', 'Referer:https://www.youtube.com/',
+            '--extractor-args', 'youtube:player_client=web,web_creator;skip=translated_subs',
+            '--extractor-retries', '3',
+            '--fragment-retries', '3',
+            videoUrl
+          );
+          
+          const checkExactFormat = await new Promise((resolve) => {
+            // Verificar cancelamento antes de iniciar check
+            if (downloadCancelledFlags.get(tabId)) {
+              resolve({ success: false, height: '', cancelled: true });
+              return;
+            }
+            
+            const proc = spawn(ytdlpPath, checkArgs1);
+            let output = '';
+            proc.stdout.on('data', (data) => { output += data.toString(); });
+            proc.on('close', (code) => {
+              resolve({ success: code === 0, height: output.trim(), cancelled: false });
+            });
+          });
+          
+          // Se foi cancelado, sair do loop
+          if (checkExactFormat.cancelled || downloadCancelledFlags.get(tabId)) {
+            cancelledByUser = true;
+            break;
+          }
+          
+          if (checkExactFormat.success && checkExactFormat.height) {
+            // Formato exato disponível - baixar sem perguntar
+            if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+              mainWindowGlobal.webContents.send('log', tabId, `✅ Resolução ${resolution}p disponível - baixando...`);
+            }
+            
+            await downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath);
+            downloadedCount++;
+            continue;
+          }
+          
+          // Segundo: tentar com formato com fallback para ver o que está disponível
+          const fallbackFormat = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]/bestvideo+bestaudio/best`;
+          const checkArgs2 = [
+            '-f', fallbackFormat,
+            '--print', '%(height)s',
+            '--no-playlist'
+          ];
+          
+          if (useBrowserCookies) {
+            checkArgs2.push('--cookies-from-browser', browser);
+          }
+          
+          checkArgs2.push(
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            '--add-header', 'Accept-Language:pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+            '--add-header', 'Accept-Encoding:gzip, deflate, br',
+            '--add-header', 'Referer:https://www.youtube.com/',
+            '--extractor-args', 'youtube:player_client=web,web_creator;skip=translated_subs',
+            '--extractor-retries', '3',
+            '--fragment-retries', '3',
+            videoUrl
+          );
+          
+          const checkBestAvailable = await new Promise((resolve) => {
+            // Verificar cancelamento antes de iniciar check
+            if (downloadCancelledFlags.get(tabId)) {
+              resolve({ success: false, height: '', cancelled: true });
+              return;
+            }
+            
+            const proc = spawn(ytdlpPath, checkArgs2);
+            let output = '';
+            proc.stdout.on('data', (data) => { output += data.toString(); });
+            proc.on('close', (code) => {
+              resolve({ success: code === 0, height: output.trim(), cancelled: false });
+            });
+          });
+          
+          // Se foi cancelado, sair do loop
+          if (checkBestAvailable.cancelled || downloadCancelledFlags.get(tabId)) {
+            cancelledByUser = true;
+            break;
+          }
+          
+          if (!checkBestAvailable.success || !checkBestAvailable.height) {
+            // Vídeo inacessível ou com erro - perguntar ao usuário o que fazer
+            const userDecision = await new Promise((resolve) => {
+              const warningWindow = new BrowserWindow({
+                width: 550,
+                height: 320,
+                resizable: false,
+                frame: false,
+                modal: true,
+                parent: mainWindowGlobal,
+                webPreferences: {
+                  nodeIntegration: true,
+                  contextIsolation: false
+                }
+              });
+
+              const htmlContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <meta charset="UTF-8">
+                  <style>
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body {
+                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                      background: linear-gradient(135deg, #1e1e1e 0%, #2d2d2d 100%);
+                      color: #fff;
+                      display: flex;
+                      flex-direction: column;
+                      height: 100vh;
+                      overflow: hidden;
+                    }
+                    .header {
+                      padding: 20px 30px;
+                      border-bottom: 1px solid #3a3a3a;
+                      -webkit-app-region: drag;
+                      cursor: move;
+                      display: flex;
+                      align-items: center;
+                      gap: 12px;
+                    }
+                    .icon { font-size: 24px; }
+                    h2 {
+                      font-size: 18px;
+                      font-weight: 600;
+                      background: linear-gradient(90deg, #ff6b6b, #ff9999);
+                      -webkit-background-clip: text;
+                      -webkit-text-fill-color: transparent;
+                    }
+                    .content {
+                      flex: 1;
+                      padding: 30px;
+                      display: flex;
+                      flex-direction: column;
+                      justify-content: center;
+                      gap: 15px;
+                    }
+                    .video-title {
+                      font-size: 13px;
+                      color: #999;
+                      margin-bottom: 5px;
+                      overflow: hidden;
+                      text-overflow: ellipsis;
+                      white-space: nowrap;
+                    }
+                    .message {
+                      font-size: 14px;
+                      line-height: 1.6;
+                      color: #e0e0e0;
+                    }
+                    .highlight {
+                      color: #ff6b6b;
+                      font-weight: 600;
+                    }
+                    .progress {
+                      font-size: 12px;
+                      color: #888;
+                      margin-top: 10px;
+                    }
+                    .buttons {
+                      display: flex;
+                      gap: 10px;
+                      margin-top: 20px;
+                    }
+                    button {
+                      flex: 1;
+                      padding: 12px 0;
+                      border: none;
+                      border-radius: 6px;
+                      font-size: 13px;
+                      font-weight: 600;
+                      cursor: pointer;
+                      transition: all 0.2s;
+                    }
+                    .btn-cancel {
+                      background: #dc3545;
+                      color: white;
+                    }
+                    .btn-cancel:hover { background: #c82333; transform: translateY(-1px); }
+                    .btn-skip {
+                      background: #6c757d;
+                      color: white;
+                    }
+                    .btn-skip:hover { background: #5a6268; transform: translateY(-1px); }
+                    .btn-retry {
+                      background: #ffc107;
+                      color: #1e1e1e;
+                    }
+                    .btn-retry:hover { background: #e0a800; transform: translateY(-1px); }
+                  </style>
+                </head>
+                <body>
+                  <div class="header">
+                    <span class="icon">⚠️</span>
+                    <h2>Vídeo Inacessível</h2>
+                  </div>
+                  <div class="content">
+                    <div class="video-title">${videoTitle}</div>
+                    <div class="message">
+                      Este vídeo <span class="highlight">não está disponível</span> para download.<br>
+                      Pode estar privado, removido ou geograficamente bloqueado.
+                    </div>
+                    <div class="progress">[${i + 1}/${playlistItems.length}] vídeos processados</div>
+                    <div class="buttons">
+                      <button class="btn-cancel" onclick="window.close(); require('electron').ipcRenderer.send('playlist-item-response', 'cancel')">Cancelar Playlist</button>
+                      <button class="btn-skip" onclick="window.close(); require('electron').ipcRenderer.send('playlist-item-response', 'skip')">Pular Este Vídeo</button>
+                      <button class="btn-retry" onclick="window.close(); require('electron').ipcRenderer.send('playlist-item-response', 'retry')">Tentar Baixar</button>
+                    </div>
+                  </div>
+                </body>
+                </html>
+              `;
+
+              warningWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+
+              ipcMain.once('playlist-item-response', (e, response) => {
+                resolve(response);
+              });
+
+              warningWindow.on('closed', () => {
+                resolve('skip');
+              });
+            });
+            
+            if (userDecision === 'cancel') {
+              if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+                mainWindowGlobal.webContents.send('log', tabId, `\n❌ Playlist cancelada pelo usuário`);
+              }
+              cancelledByUser = true;
+              break;
+            } else if (userDecision === 'skip') {
+              if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+                mainWindowGlobal.webContents.send('log', tabId, `⏭️ Vídeo pulado`);
+              }
+              skippedCount++;
+              continue;
+            } else {
+              // retry - tentar baixar mesmo sem conseguir verificar
+              if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+                mainWindowGlobal.webContents.send('log', tabId, `🔄 Tentando baixar...`);
+              }
+              try {
+                await downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath);
+                downloadedCount++;
+              } catch (err) {
+                if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+                  mainWindowGlobal.webContents.send('log', tabId, `⚠️ Falha: ${err.message}`);
+                }
+                skippedCount++;
+              }
+              continue;
+            }
+          }
+          
+          const actualHeight = parseInt(checkBestAvailable.height.split('\n')[0]);
+          
+          if (actualHeight < requestedHeight) {
+            // Resolução inferior disponível - perguntar ao usuário
+            
+            // Verificar cancelamento antes de mostrar dialog
+            if (downloadCancelledFlags.get(tabId)) {
+              cancelledByUser = true;
+              break;
+            }
+            
+            const resNames = {
+              2160: '4K (2160p)',
+              1440: '2K (1440p)',
+              1080: 'Full HD (1080p)',
+              720: 'HD (720p)',
+              480: 'SD (480p)',
+              360: '360p',
+              240: '240p'
+            };
+            
+            const requestedName = resNames[requestedHeight] || `${requestedHeight}p`;
+            const actualName = resNames[actualHeight] || `${actualHeight}p`;
+            
+            const userDecision = await new Promise((resolve) => {
+              const warningWindow = new BrowserWindow({
+                width: 550,
+                height: 320,
+                resizable: false,
+                frame: false,
+                modal: true,
+                parent: mainWindowGlobal,
+                webPreferences: {
+                  nodeIntegration: true,
+                  contextIsolation: false
+                }
+              });
+
+              const htmlContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <meta charset="UTF-8">
+                  <style>
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body {
+                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                      background: linear-gradient(135deg, #1e1e1e 0%, #2d2d2d 100%);
+                      color: #fff;
+                      display: flex;
+                      flex-direction: column;
+                      height: 100vh;
+                      overflow: hidden;
+                    }
+                    .header {
+                      padding: 20px 30px;
+                      border-bottom: 1px solid #3a3a3a;
+                      -webkit-app-region: drag;
+                      cursor: move;
+                      display: flex;
+                      align-items: center;
+                      gap: 12px;
+                    }
+                    .icon { font-size: 24px; }
+                    h2 {
+                      font-size: 18px;
+                      font-weight: 600;
+                      background: linear-gradient(90deg, #0078d4, #00d4ff);
+                      -webkit-background-clip: text;
+                      -webkit-text-fill-color: transparent;
+                    }
+                    .content {
+                      flex: 1;
+                      padding: 30px;
+                      display: flex;
+                      flex-direction: column;
+                      justify-content: center;
+                      gap: 15px;
+                    }
+                    .video-title {
+                      font-size: 13px;
+                      color: #999;
+                      margin-bottom: 5px;
+                      overflow: hidden;
+                      text-overflow: ellipsis;
+                      white-space: nowrap;
+                    }
+                    .message {
+                      font-size: 14px;
+                      line-height: 1.6;
+                      color: #e0e0e0;
+                    }
+                    .highlight {
+                      color: #0078d4;
+                      font-weight: 600;
+                    }
+                    .progress {
+                      font-size: 12px;
+                      color: #888;
+                      margin-top: 10px;
+                    }
+                    .buttons {
+                      display: flex;
+                      gap: 10px;
+                      margin-top: 20px;
+                    }
+                    button {
+                      flex: 1;
+                      padding: 12px 0;
+                      border: none;
+                      border-radius: 6px;
+                      font-size: 13px;
+                      font-weight: 600;
+                      cursor: pointer;
+                      transition: all 0.2s;
+                    }
+                    .btn-cancel {
+                      background: #dc3545;
+                      color: white;
+                    }
+                    .btn-cancel:hover { background: #c82333; transform: translateY(-1px); }
+                    .btn-skip {
+                      background: #6c757d;
+                      color: white;
+                    }
+                    .btn-skip:hover { background: #5a6268; transform: translateY(-1px); }
+                    .btn-download {
+                      background: #0078d4;
+                      color: white;
+                    }
+                    .btn-download:hover { background: #0063b1; transform: translateY(-1px); }
+                  </style>
+                </head>
+                <body>
+                  <div class="header">
+                    <span class="icon">⚠️</span>
+                    <h2>Resolução Inferior Disponível</h2>
+                  </div>
+                  <div class="content">
+                    <div class="video-title">${videoTitle}</div>
+                    <div class="message">
+                      Este vídeo não está disponível em <span class="highlight">${requestedName}</span>.<br>
+                      A melhor qualidade disponível é <span class="highlight">${actualName}</span>.
+                    </div>
+                    <div class="progress">[${i + 1}/${playlistItems.length}] vídeos processados</div>
+                    <div class="buttons">
+                      <button class="btn-cancel" onclick="window.close(); require('electron').ipcRenderer.send('playlist-item-response', 'cancel')">Cancelar Playlist</button>
+                      <button class="btn-skip" onclick="window.close(); require('electron').ipcRenderer.send('playlist-item-response', 'skip')">Pular Este Vídeo</button>
+                      <button class="btn-download" onclick="window.close(); require('electron').ipcRenderer.send('playlist-item-response', 'download')">Baixar ${actualName}</button>
+                    </div>
+                  </div>
+                </body>
+                </html>
+              `;
+
+              warningWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+
+              ipcMain.once('playlist-item-response', (e, response) => {
+                resolve(response);
+              });
+
+              warningWindow.on('closed', () => {
+                resolve('skip');
+              });
+            });
+            
+            if (userDecision === 'cancel') {
+              if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+                mainWindowGlobal.webContents.send('log', tabId, `\n❌ Playlist cancelada pelo usuário`);
+              }
+              cancelledByUser = true;
+              break;
+            } else if (userDecision === 'skip') {
+              if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+                mainWindowGlobal.webContents.send('log', tabId, `⏭️ Vídeo pulado`);
+              }
+              skippedCount++;
+              continue;
+            } else {
+              // download
+              if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+                mainWindowGlobal.webContents.send('log', tabId, `📥 Baixando em ${actualName}...`);
+              }
+              await downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath);
+              downloadedCount++;
+            }
+          } else {
+            // Resolução igual ou superior disponível
+            
+            // Verificar cancelamento antes de baixar
+            if (downloadCancelledFlags.get(tabId)) {
+              cancelledByUser = true;
+              break;
+            }
+            
+            if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+              mainWindowGlobal.webContents.send('log', tabId, `✅ Resolução ${resolution}p disponível - baixando...`);
+            }
+            await downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath);
+            downloadedCount++;
+          }
+          
+        } catch (error) {
+          if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+            mainWindowGlobal.webContents.send('log', tabId, `⚠️ Erro ao processar vídeo: ${error.message}`);
+          }
+          skippedCount++;
+        }
+      }
+      
+      if (cancelledByUser) {
+        throw new Error('Download cancelado pelo usuário');
+      }
+      
+      const summary = `\n✅ Playlist finalizada: ${downloadedCount} baixados, ${skippedCount} pulados`;
+      if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, summary);
+      }
+      
+      return { sucesso: true, mensagem: summary };
+    }
+    
     // Se for playlist grande (>200 itens), dividir em lotes
     const isLargePlaylist = dados.isPlaylist && playlistItems && playlistItems.length > 200;
     
@@ -1166,13 +1812,108 @@ ipcMain.handle("start-download", async (event, dados) => {
   }
 });
 
-// Função auxiliar para baixar um chunk (lote) da playlist
-async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = null, playlistEnd = null) {
-  const { url, type, format, resolution, ignorePlaylist, cookiesFilePath } = dados;
+// Função auxiliar para baixar um único vídeo
+async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
+  const { type, format, resolution, cookiesFilePath, allowLowerQuality } = dados;
   
   return new Promise((resolve, reject) => {
     const ytdlpPath = path.join(binPath, 'yt-dlp.exe');
     const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
+    
+    const args = [];
+    
+    // Detectar browser para cookies
+    const prefs = loadPreferences();
+    const browser = detectBrowser(prefs?.browserForCookies || 'auto');
+    
+    if (type === 'audio') {
+      args.push('-x');
+      args.push('--audio-format', format);
+      args.push('--audio-quality', '0');
+    } else {
+      let formatString;
+      if (resolution && resolution !== 'best') {
+        if (allowLowerQuality) {
+          formatString = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]/bestvideo+bestaudio/best`;
+        } else {
+          formatString = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]`;
+        }
+      } else {
+        formatString = 'bestvideo+bestaudio/best';
+      }
+      args.push('-f', formatString);
+      args.push('--merge-output-format', format);
+    }
+    
+    args.push('--ffmpeg-location', ffmpegPath);
+    args.push('-o', path.join(finalDownloadPath, '%(title)s.%(ext)s'));
+    args.push('--no-playlist');
+    
+    // Cookies e anti-bot
+    const useBrowserCookies = prefs?.useBrowserCookies !== false;
+    
+    if (cookiesFilePath && cookiesFilePath.trim() !== '') {
+      args.push('--cookies', cookiesFilePath);
+    } else if (useBrowserCookies) {
+      args.push('--cookies-from-browser', browser);
+    }
+    
+    args.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
+    args.push('--add-header', 'Accept-Language:pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7');
+    args.push('--add-header', 'Accept-Encoding:gzip, deflate, br');
+    args.push('--add-header', 'Referer:https://www.youtube.com/');
+    args.push('--extractor-args', 'youtube:player_client=web,web_creator;skip=translated_subs');
+    args.push('--extractor-retries', '5');
+    args.push('--fragment-retries', '5');
+    args.push('--sleep-interval', '1');
+    args.push('--max-sleep-interval', '5');
+    args.push('--source-address', '0.0.0.0');
+    args.push('--progress');
+    args.push('--newline');
+    args.push(videoUrl);
+    
+    const ytdlp = spawn(ytdlpPath, args);
+    
+    ytdlp.stdout.on('data', (data) => {
+      const output = data.toString();
+      if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, output.trim());
+      }
+    });
+    
+    ytdlp.stderr.on('data', (data) => {
+      const error = data.toString();
+      if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, error.trim());
+      }
+    });
+    
+    ytdlp.on('close', (code) => {
+      if (code === 0) {
+        resolve({ sucesso: true });
+      } else {
+        reject(new Error(`yt-dlp código ${code}`));
+      }
+    });
+    
+    ytdlp.on('error', (error) => {
+      reject(error);
+    });
+  });
+}
+
+// Função auxiliar para baixar um chunk (lote) da playlist
+async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = null, playlistEnd = null) {
+  const { url, type, format, resolution, ignorePlaylist, cookiesFilePath, allowLowerQuality } = dados;
+  
+  return new Promise((resolve, reject) => {
+    const ytdlpPath = path.join(binPath, 'yt-dlp.exe');
+    const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
+    
+    // Detectar browser para cookies
+    const prefs = loadPreferences();
+    const browser = detectBrowser(prefs?.browserForCookies || 'auto');
     
     // Configurar argumentos do yt-dlp
     const args = [];
@@ -1186,11 +1927,14 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
       // Download de vídeo
       let formatString;
       if (resolution && resolution !== 'best') {
-        // Limitar pela Resolução escolhida com múltiplos fallbacks
-        // 1. Tenta melhor vídeo até a Resolução + melhor áudio
-        // 2. Se não disponível, tenta melhor formato combinado até a Resolução
-        // 3. Se ainda não disponível, pega o melhor disponível sem limites
-        formatString = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]/bestvideo+bestaudio/best`;
+        // Respeitar allowLowerQuality
+        if (allowLowerQuality) {
+          // Com fallback
+          formatString = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]/bestvideo+bestaudio/best`;
+        } else {
+          // Sem fallback - formato estrito
+          formatString = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]`;
+        }
       } else {
         // Melhor qualidade disponível
         formatString = 'bestvideo+bestaudio/best';
@@ -1216,10 +1960,26 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
       }
     }
     
-    // Se houver arquivo de cookies, adicionar
+    // Cookies e anti-bot measures
+    const useBrowserCookies = prefs?.useBrowserCookies !== false;
+    
     if (cookiesFilePath && cookiesFilePath.trim() !== '') {
       args.push('--cookies', cookiesFilePath);
+    } else if (useBrowserCookies) {
+      args.push('--cookies-from-browser', browser);
     }
+    
+    args.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
+    args.push('--add-header', 'Accept-Language:pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7');
+    args.push('--add-header', 'Accept-Encoding:gzip, deflate, br');
+    args.push('--add-header', 'Referer:https://www.youtube.com/');
+    args.push('--extractor-args', 'youtube:player_client=web,web_creator;skip=translated_subs');
+    args.push('--extractor-retries', '5');
+    args.push('--fragment-retries', '5');
+    args.push('--sleep-interval', '1');
+    args.push('--max-sleep-interval', '5');
+    args.push('--source-address', '0.0.0.0');
     
     args.push('--progress'); // Mostrar progresso
     args.push('--newline'); // Nova linha para cada atualização de progresso
