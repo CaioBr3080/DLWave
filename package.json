@@ -1,7 +1,7 @@
 {
   "name": "dlwave",
   "productName": "DLWave",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Downloader de vídeos e áudios do YouTube com yt-dlp e ffmpeg",
   "main": ".vite/build/main.js",
   "scripts": {
