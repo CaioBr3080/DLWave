@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("api", {
   selectFolder: () => ipcRenderer.invoke("select-folder"),
   selectCookiesFile: () => ipcRenderer.invoke("select-cookies-file"),
+  selectBrowserFile: () => ipcRenderer.invoke("select-browser-file"),
   openFolder: (folderPath) => ipcRenderer.invoke("open-folder", folderPath),
   getPlaylistInfo: (url) => ipcRenderer.invoke("get-playlist-info", url),
   requestPlaylistFolderName: (basePath) => ipcRenderer.invoke("request-playlist-folder-name", basePath),

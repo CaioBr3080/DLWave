@@ -633,6 +633,23 @@ ipcMain.handle("select-cookies-file", async () => {
   return null;
 });
 
+// Handler para selecionar executável do navegador
+ipcMain.handle("select-browser-file", async () => {
+  const result = await dialog.showOpenDialog(mainWindowGlobal, {
+    properties: ['openFile'],
+    filters: [
+      { name: 'Executáveis', extensions: ['exe'] },
+      { name: 'Todos os Arquivos', extensions: ['*'] }
+    ],
+    title: 'Selecione o executável do navegador'
+  });
+  
+  if (!result.canceled && result.filePaths.length > 0) {
+    return result.filePaths[0];
+  }
+  return null;
+});
+
 // Handler para abrir pasta
 ipcMain.handle("open-folder", async (event, folderPath) => {
   if (folderPath) {
@@ -825,11 +842,32 @@ function loadPreferences() {
 }
 
 // Função helper para detectar navegador para cookies
-function detectBrowser(userPreference = 'auto') {
-  // Se usuário escolheu um navegador específico, usar ele
-  if (userPreference && userPreference !== 'auto') {
-    console.log(`🍪 Navegador selecionado pelo usuário: ${userPreference}`);
-    return userPreference;
+function detectBrowser(userPreference = '') {
+  // Se usuário forneceu um caminho de arquivo, extrair o nome do navegador
+  if (userPreference && (userPreference.includes('\\') || userPreference.includes('/') || userPreference.endsWith('.exe'))) {
+    if (fs.existsSync(userPreference)) {
+      // Extrair nome do arquivo do caminho
+      const fileName = path.basename(userPreference, '.exe').toLowerCase();
+      
+      // Mapear nomes de arquivos para nomes de navegadores que o yt-dlp aceita
+      const browserMap = {
+        'brave': 'brave',
+        'chrome': 'chrome',
+        'chromium': 'chromium',
+        'msedge': 'edge',
+        'firefox': 'firefox',
+        'opera': 'opera',
+        'safari': 'safari',
+        'vivaldi': 'vivaldi',
+        'whale': 'whale'
+      };
+      
+      const browserName = browserMap[fileName] || 'chrome';
+      console.log(`🍪 Navegador customizado detectado: ${fileName} -> ${browserName}`);
+      return browserName;
+    } else {
+      console.warn(`⚠️ Navegador não encontrado: ${userPreference}, tentando auto-detectar...`);
+    }
   }
   
   // Auto-detect: verificar quais navegadores estão instalados
@@ -863,7 +901,7 @@ ipcMain.handle("get-playlist-info", async (event, url) => {
     
     // Obter configuração do navegador
     const prefs = loadPreferences();
-    const browser = detectBrowser(prefs?.browserForCookies || 'auto');
+    const browser = detectBrowser(prefs?.browserPath || '');
     
     const args = [
       '--flat-playlist',
@@ -949,7 +987,7 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
     
     // Detectar browser para cookies
     const prefs = loadPreferences();
-    const browser = detectBrowser(prefs?.browserForCookies || 'auto');
+    const browser = detectBrowser(prefs?.browserPath || '');
     
     const shouldContinue = await new Promise((checkResolve) => {
       let formatString = allowLowerQuality 
@@ -1257,7 +1295,7 @@ ipcMain.handle("start-download", async (event, dados) => {
           
           // Detectar browser para cookies
           const prefs = loadPreferences();
-          const browser = detectBrowser(prefs?.browserForCookies || 'auto');
+          const browser = detectBrowser(prefs?.browserPath || '');
           const useBrowserCookies = prefs?.useBrowserCookies !== false;
           
           // Primeiro: tentar com formato estrito (sem fallback)
@@ -1824,7 +1862,7 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
     
     // Detectar browser para cookies
     const prefs = loadPreferences();
-    const browser = detectBrowser(prefs?.browserForCookies || 'auto');
+    const browser = detectBrowser(prefs?.browserPath || '');
     
     if (type === 'audio') {
       args.push('-x');
@@ -1913,7 +1951,7 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
     
     // Detectar browser para cookies
     const prefs = loadPreferences();
-    const browser = detectBrowser(prefs?.browserForCookies || 'auto');
+    const browser = detectBrowser(prefs?.browserPath || '');
     
     // Configurar argumentos do yt-dlp
     const args = [];

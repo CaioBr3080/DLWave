@@ -1700,16 +1700,12 @@ async function showSettingsModal() {
                 <input type="checkbox" id="useBrowserCookiesCheckbox" style="width: 18px; height: 18px; cursor: pointer;">
                 <span style="font-size: 14px; color: #e0e0e0;">Usar cookies do navegador automaticamente</span>
               </label>
-              <select id="browserSelect" style="width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; color: #fff; border-radius: 4px; font-size: 14px;">
-                <option value="auto">Auto-detectar (recomendado)</option>
-                <option value="chrome">Google Chrome</option>
-                <option value="edge">Microsoft Edge</option>
-                <option value="brave">Brave Browser</option>
-                <option value="firefox">Mozilla Firefox</option>
-                <option value="opera">Opera</option>
-                <option value="safari">Safari (macOS)</option>
-              </select>
-              <p style="font-size: 12px; color: #999; margin-top: 8px;">Se você não usa nenhum desses navegadores ou tem problemas, use a opção de "Arquivo de Cookies" acima.</p>
+              <input type="text" id="browserPath" readonly placeholder="Selecione o executável do navegador (chrome.exe, brave.exe, firefox.exe, etc.)" style="width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; margin-bottom: 10px;">
+              <div style="display: flex; gap: 10px;">
+                <button class="btn-browse" id="btnSelectBrowser" style="padding: 8px 16px;" title="Selecione o executável do navegador">🌐 Selecionar Navegador</button>
+                <button class="btn-browse" id="btnClearBrowser" style="padding: 8px 16px; display: none;" title="Remover navegador configurado">🗑️ Remover</button>
+              </div>
+              <p style="font-size: 12px; color: #999; margin-top: 8px;">Selecione o executável do seu navegador (ex: chrome.exe, brave.exe, msedge.exe, firefox.exe). Funciona com qualquer navegador.</p>
             </div>
           </div>
           
@@ -1763,7 +1759,9 @@ async function showSettingsModal() {
   const cookiesFilePathInput = modal.querySelector('#cookiesFilePath');
   const btnSelectCookies = modal.querySelector('#btnSelectCookies');
   const btnClearCookies = modal.querySelector('#btnClearCookies');
-  const browserSelect = modal.querySelector('#browserSelect');
+  const browserPathInput = modal.querySelector('#browserPath');
+  const btnSelectBrowser = modal.querySelector('#btnSelectBrowser');
+  const btnClearBrowser = modal.querySelector('#btnClearBrowser');
   const useBrowserCookiesCheckbox = modal.querySelector('#useBrowserCookiesCheckbox');
   const languageSelect = modal.querySelector('#languageSelect');
   
@@ -1771,7 +1769,10 @@ async function showSettingsModal() {
   languageSelect.value = currentLanguage;
   
   // Definir navegador salvo
-  browserSelect.value = savedPrefs?.browserForCookies || 'auto';
+  if (savedPrefs?.browserPath) {
+    browserPathInput.value = savedPrefs.browserPath;
+    btnClearBrowser.style.display = 'inline-block';
+  }
   
   // Sempre definir o estado dos checkboxes explicitamente
   ignorePlaylistGlobalCheckbox.checked = savedPrefs?.ignorePlaylistGlobal ?? false;
@@ -1825,6 +1826,21 @@ async function showSettingsModal() {
     btnClearCookies.style.display = 'none';
   });
   
+  // Botão para selecionar navegador
+  btnSelectBrowser.addEventListener('click', async () => {
+    const filePath = await window.api.selectBrowserFile();
+    if (filePath) {
+      browserPathInput.value = filePath;
+      btnClearBrowser.style.display = 'inline-block';
+    }
+  });
+  
+  // Botão para limpar navegador
+  btnClearBrowser.addEventListener('click', () => {
+    browserPathInput.value = '';
+    btnClearBrowser.style.display = 'none';
+  });
+  
   // Listener para mudança de idioma
   languageSelect.addEventListener('change', () => {
     const newLang = languageSelect.value;
@@ -1840,7 +1856,7 @@ async function showSettingsModal() {
       noPlaylistFolder: noPlaylistFolderCheckbox.checked,
       defaultDownloadPath: defaultDownloadPathInput.value || '',
       cookiesFilePath: cookiesFilePathInput.value || '',
-      browserForCookies: browserSelect.value || 'auto',
+      browserPath: browserPathInput.value || '',
       useBrowserCookies: useBrowserCookiesCheckbox.checked
     };
     
