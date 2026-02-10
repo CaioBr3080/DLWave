@@ -2209,7 +2209,7 @@ function createTray() {
   const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
   const trayIconPath = isDev 
     ? path.join(process.cwd(), 'assets', 'tray-icon.png')
-    : path.join(path.dirname(app.getPath('exe')), 'resources', 'assets', 'tray-icon.png');
+    : path.join(process.resourcesPath, 'assets', 'tray-icon.png');
   
   let icon;
   if (fs.existsSync(trayIconPath)) {

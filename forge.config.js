@@ -6,9 +6,10 @@ module.exports = {
     asar: true,
     icon: './assets/icon', // Sem extensão - Electron escolhe .ico (Windows), .icns (Mac), .png (Linux)
     
-    // Incluir EULA no build
+    // Incluir EULA e assets no build
     extraResource: [
-      './EULA.txt'
+      './EULA.txt',
+      './assets'
     ],
     
     // Ignorar binários - serão baixados na primeira execução
