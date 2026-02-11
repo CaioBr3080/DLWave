@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("api", {
   loadPreferences: () => ipcRenderer.invoke("load-preferences"),
   getBinPath: () => ipcRenderer.invoke("get-bin-path"),
   openBinFolder: () => ipcRenderer.invoke("open-bin-folder"),
+  getAppVersion: () => ipcRenderer.invoke("get-app-version"),
   checkDependencies: () => ipcRenderer.invoke("check-dependencies"),
   installDependencies: () => ipcRenderer.invoke("install-dependencies"),
   onBeforeQuit: (callback) => ipcRenderer.on("before-quit-check", async (event) => {

@@ -870,7 +870,7 @@ function detectBrowser(userPreference = '') {
     }
   }
   
-  // Auto-detect: verificar quais navegadores estão instalados
+  // Auto-detect: verificar quais navegadores estão instalados (fallback silencioso)
   let browser = 'chrome'; // Padrão fallback
   const edgePath = path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'Microsoft', 'Edge', 'Application', 'msedge.exe');
   const chromePath = path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe');
@@ -890,8 +890,34 @@ function detectBrowser(userPreference = '') {
     browser = 'opera';
   }
   
-  console.log(`🍪 Navegador auto-detectado: ${browser}`);
+  // Log apenas se foi configurado manualmente pelo usuário
+  if (userPreference && userPreference.trim() !== '') {
+    console.log(`🍪 Usando navegador configurado: ${browser}`);
+  }
+  
   return browser;
+}
+
+// Função helper para criar opções de spawn do yt-dlp com Node.js do Electron
+function getYtdlpSpawnOptions() {
+  // Obter diretório do Node.js embutido no Electron
+  const electronNodePath = path.dirname(process.execPath);
+  
+  // Criar cópia do PATH atual e adicionar o Node.js do Electron no início
+  const currentPath = process.env.PATH || '';
+  const newPath = `${electronNodePath};${currentPath}`;
+  
+  return {
+    env: {
+      ...process.env,
+      PATH: newPath,
+      // Força yt-dlp a preferir Node.js para desafios JavaScript (n parameter)
+      // Ao invés de tentar baixar/usar PhantomJS
+      NODE_OPTIONS: '',
+      // Define explicitamente onde está o Node.js
+      NODE_PATH: electronNodePath
+    }
+  };
 }
 
 // Handler para extrair informações de playlist
@@ -902,17 +928,27 @@ ipcMain.handle("get-playlist-info", async (event, url) => {
     // Obter configuração do navegador
     const prefs = loadPreferences();
     const browser = detectBrowser(prefs?.browserPath || '');
+    const browserPath = prefs?.browserPath || '';
+    
+    // Verificar se há browserPath configurado
+    const useBrowserCookies = browserPath.trim() !== '';
+    
+    // iOS client causa erro de PO Token quando tem cookies - usar apenas sem cookies
+    const playerClient = useBrowserCookies ? 'web,web_creator' : 'ios,web,web_creator';
+    
+    // Obter limite de playlist das preferências (padrão: 1000)
+    const playlistLimit = prefs?.playlistLimit || 1000;
     
     const args = [
       '--flat-playlist',
       '--print', '%(id)s|||%(title)s',  // Retornar ID e título separados por |||
-      '--playlist-end', '1000',
+      '--playlist-end', String(playlistLimit),
       '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--add-header', 'Accept-Encoding:gzip, deflate, br',
       '--add-header', 'Referer:https://www.youtube.com/',
-      '--extractor-args', 'youtube:player_client=web,web_creator;skip=translated_subs',
+      '--extractor-args', `youtube:player_client=${playerClient};skip=translated_subs`,
       '--extractor-retries', '5',
       '--fragment-retries', '5',
       '--sleep-interval', '2',
@@ -920,8 +956,6 @@ ipcMain.handle("get-playlist-info", async (event, url) => {
       '--source-address', '0.0.0.0'
     ];
     
-    // Adicionar cookies do navegador se habilitado nas preferências
-    const useBrowserCookies = prefs?.useBrowserCookies !== false; // Default: true
     if (useBrowserCookies) {
       console.log('🍪 Usando cookies do navegador:', browser);
       args.push('--cookies-from-browser', browser);
@@ -931,7 +965,7 @@ ipcMain.handle("get-playlist-info", async (event, url) => {
     
     args.push(url);
     
-    const ytdlp = spawn(ytdlpPath, args);
+    const ytdlp = spawn(ytdlpPath, args, getYtdlpSpawnOptions());
     const items = [];
     let errorOutput = '';
     
@@ -961,7 +995,35 @@ ipcMain.handle("get-playlist-info", async (event, url) => {
       if (code === 0) {
         resolve(items);
       } else {
-        const errorMsg = errorOutput.trim() || `Erro ao extrair playlist: código ${code}`;
+        let errorMsg = errorOutput.trim() || `Erro ao extrair playlist: código ${code}`;
+        
+        // Erro de DPAPI (criptografia do Windows)
+        const dpapiError = errorOutput.toLowerCase().includes('failed to decrypt with dpapi');
+        if (dpapiError) {
+          errorMsg = '🔒 ERRO DE CRIPTOGRAFIA: Não foi possível descriptografar os cookies do navegador.\n\n' +
+                     '📌 SOLUÇÕES:\n' +
+                     '   1. FECHE TODAS as janelas do navegador e tente novamente\n' +
+                     '   2. Execute o DLWave como Administrador (clique direito → Executar como administrador)\n' +
+                     '   3. OU use cookies.txt manual (recomendado):\n' +
+                     '      • Instale a extensão "Get cookies.txt LOCALLY" no navegador\n' +
+                     '      • Exporte o arquivo cookies.txt\n' +
+                     '      • Configure em Configurações → Cookies.txt';
+        }
+        
+        // Erro de cookie database locked (navegador aberto)
+        const cookieDbError = errorOutput.toLowerCase().includes('could not copy chrome cookie database');
+        if (cookieDbError && !dpapiError) {
+          errorMsg = '⚠️ FECHE O NAVEGADOR: O navegador precisa estar completamente fechado para extrair os cookies. Feche todas as janelas do navegador e tente novamente.';
+        }
+        
+        // Se for erro de autenticação, dar dica
+        const authErrors = ['please sign in', 'sign in to confirm', 'requires authentication', 'po token', 'gvs po token'];
+        const isAuthError = authErrors.some(msg => errorOutput.toLowerCase().includes(msg));
+        
+        if (isAuthError && !cookieDbError && !dpapiError) {
+          errorMsg = '🔐 Erro de autenticação: Este conteúdo requer login. Habilite cookies do navegador nas Configurações.';
+        }
+        
         console.error('Erro completo:', errorMsg);
         reject(new Error(errorMsg));
       }
@@ -983,6 +1045,7 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
   
   try {
     const ytdlpPath = path.join(binPath, 'yt-dlp.exe');
+    const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
     const requestedHeight = parseInt(resolution);
     
     // Detectar browser para cookies
@@ -1000,11 +1063,15 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
         '--no-playlist'
       ];
       
-      // Adicionar cookies se habilitado
-      const useBrowserCookies = prefs?.useBrowserCookies !== false;
+      // Adicionar cookies se browserPath configurado
+      const browserPath = prefs?.browserPath || '';
+      const useBrowserCookies = browserPath.trim() !== '';
       if (useBrowserCookies) {
         checkArgs.push('--cookies-from-browser', browser);
       }
+      
+      // iOS client causa erro de PO Token quando tem cookies - usar apenas sem cookies
+      const playerClient = useBrowserCookies ? 'web,web_creator' : 'ios,web,web_creator';
       
       checkArgs.push(
         '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -1012,7 +1079,7 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
         '--add-header', 'Accept-Language:pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
         '--add-header', 'Accept-Encoding:gzip, deflate, br',
         '--add-header', 'Referer:https://www.youtube.com/',
-        '--extractor-args', 'youtube:player_client=web,web_creator;skip=translated_subs',
+        '--extractor-args', `youtube:player_client=${playerClient};skip=translated_subs`,
         '--extractor-retries', '5',
         '--fragment-retries', '5',
         '--sleep-interval', '1',
@@ -1021,7 +1088,7 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
         url
       );
       
-      const checkProcess = spawn(ytdlpPath, checkArgs);
+      const checkProcess = spawn(ytdlpPath, checkArgs, getYtdlpSpawnOptions());
       let detectedHeight = '';
       
       checkProcess.stdout.on('data', (data) => {
@@ -1205,6 +1272,26 @@ ipcMain.handle("start-download", async (event, dados) => {
   // Reset flag de cancelamento no início do download
   downloadCancelledFlags.set(tabId, false);
   
+  // Verificar se dependências estão instaladas ANTES de tudo
+  const ytdlpPath = path.join(binPath, 'yt-dlp.exe');
+  const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
+  
+  if (!fs.existsSync(ytdlpPath) || !fs.existsSync(ffmpegPath)) {
+    const errorMsg = `❌ ERRO: Dependências não instaladas!\n` +
+                    `   yt-dlp: ${fs.existsSync(ytdlpPath) ? '✅' : '❌'}\n` +
+                    `   ffmpeg: ${fs.existsSync(ffmpegPath) ? '✅' : '❌'}\n` +
+                    `\n📌 SOLUÇÃO: Abra as Configurações e clique em "Reinstalar Dependências"`;
+    
+    if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+      mainWindowGlobal.webContents.send('log', tabId, errorMsg);
+    }
+    throw new Error('Dependências não instaladas');
+  }
+  
+  console.log(`✅ Verificação de dependências OK`);
+  console.log(`   yt-dlp: ${ytdlpPath}`);
+  console.log(`   ffmpeg: ${ffmpegPath}`);
+  
   try {
     // Verificar espaço em disco disponível
     const driveLetter = path.parse(downloadPath).root;
@@ -1276,6 +1363,7 @@ ipcMain.handle("start-download", async (event, dados) => {
       
       for (let i = 0; i < playlistItems.length; i++) {
         if (downloadCancelledFlags.get(tabId)) {
+          console.log(`🛑 Cancelamento detectado no loop da playlist (tabId: ${tabId})`);
           cancelledByUser = true;
           break;
         }
@@ -1291,12 +1379,14 @@ ipcMain.handle("start-download", async (event, dados) => {
         try {
           // Verificar resolução disponível do vídeo
           const ytdlpPath = path.join(binPath, 'yt-dlp.exe');
+          const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
           const requestedHeight = parseInt(resolution);
           
           // Detectar browser para cookies
           const prefs = loadPreferences();
           const browser = detectBrowser(prefs?.browserPath || '');
-          const useBrowserCookies = prefs?.useBrowserCookies !== false;
+          const browserPath = prefs?.browserPath || '';
+          const useBrowserCookies = browserPath.trim() !== '';
           
           // Primeiro: tentar com formato estrito (sem fallback)
           const strictFormat = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]`;
@@ -1310,13 +1400,16 @@ ipcMain.handle("start-download", async (event, dados) => {
             checkArgs1.push('--cookies-from-browser', browser);
           }
           
+          // iOS client causa erro de PO Token quando tem cookies - usar apenas sem cookies
+          const playerClient = useBrowserCookies ? 'web,web_creator' : 'ios,web,web_creator';
+          
           checkArgs1.push(
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             '--add-header', 'Accept-Language:pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
             '--add-header', 'Accept-Encoding:gzip, deflate, br',
             '--add-header', 'Referer:https://www.youtube.com/',
-            '--extractor-args', 'youtube:player_client=web,web_creator;skip=translated_subs',
+            '--extractor-args', `youtube:player_client=${playerClient};skip=translated_subs`,
             '--extractor-retries', '3',
             '--fragment-retries', '3',
             videoUrl
@@ -1329,7 +1422,7 @@ ipcMain.handle("start-download", async (event, dados) => {
               return;
             }
             
-            const proc = spawn(ytdlpPath, checkArgs1);
+            const proc = spawn(ytdlpPath, checkArgs1, getYtdlpSpawnOptions());
             let output = '';
             proc.stdout.on('data', (data) => { output += data.toString(); });
             proc.on('close', (code) => {
@@ -1349,8 +1442,17 @@ ipcMain.handle("start-download", async (event, dados) => {
               mainWindowGlobal.webContents.send('log', tabId, `✅ Resolução ${resolution}p disponível - baixando...`);
             }
             
-            await downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath);
-            downloadedCount++;
+            try {
+              await downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath);
+              downloadedCount++;
+            } catch (err) {
+              // Se foi cancelado, parar tudo
+              if (err.message && err.message.includes('cancelado')) {
+                cancelledByUser = true;
+                break;
+              }
+              throw err; // Re-lançar outros erros
+            }
             continue;
           }
           
@@ -1366,13 +1468,14 @@ ipcMain.handle("start-download", async (event, dados) => {
             checkArgs2.push('--cookies-from-browser', browser);
           }
           
+          // Usar mesma estratégia de player_client
           checkArgs2.push(
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             '--add-header', 'Accept-Language:pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
             '--add-header', 'Accept-Encoding:gzip, deflate, br',
             '--add-header', 'Referer:https://www.youtube.com/',
-            '--extractor-args', 'youtube:player_client=web,web_creator;skip=translated_subs',
+            '--extractor-args', `youtube:player_client=${playerClient};skip=translated_subs`,
             '--extractor-retries', '3',
             '--fragment-retries', '3',
             videoUrl
@@ -1385,7 +1488,7 @@ ipcMain.handle("start-download", async (event, dados) => {
               return;
             }
             
-            const proc = spawn(ytdlpPath, checkArgs2);
+            const proc = spawn(ytdlpPath, checkArgs2, getYtdlpSpawnOptions());
             let output = '';
             proc.stdout.on('data', (data) => { output += data.toString(); });
             proc.on('close', (code) => {
@@ -1564,6 +1667,11 @@ ipcMain.handle("start-download", async (event, dados) => {
                 await downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath);
                 downloadedCount++;
               } catch (err) {
+                // Se foi cancelado, parar tudo
+                if (err.message && err.message.includes('cancelado')) {
+                  cancelledByUser = true;
+                  break;
+                }
                 if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
                   mainWindowGlobal.webContents.send('log', tabId, `⚠️ Falha: ${err.message}`);
                 }
@@ -1756,8 +1864,17 @@ ipcMain.handle("start-download", async (event, dados) => {
               if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
                 mainWindowGlobal.webContents.send('log', tabId, `📥 Baixando em ${actualName}...`);
               }
-              await downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath);
-              downloadedCount++;
+              try {
+                await downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath);
+                downloadedCount++;
+              } catch (err) {
+                // Se foi cancelado, parar tudo
+                if (err.message && err.message.includes('cancelado')) {
+                  cancelledByUser = true;
+                  break;
+                }
+                throw err; // Re-lançar outros erros
+              }
             }
           } else {
             // Resolução igual ou superior disponível
@@ -1771,11 +1888,25 @@ ipcMain.handle("start-download", async (event, dados) => {
             if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
               mainWindowGlobal.webContents.send('log', tabId, `✅ Resolução ${resolution}p disponível - baixando...`);
             }
-            await downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath);
-            downloadedCount++;
+            try {
+              await downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath);
+              downloadedCount++;
+            } catch (err) {
+              // Se foi cancelado, parar tudo
+              if (err.message && err.message.includes('cancelado')) {
+                cancelledByUser = true;
+                break;
+              }
+              throw err; // Re-lançar outros erros
+            }
           }
           
         } catch (error) {
+          // Se foi cancelado, parar loop
+          if (error.message && error.message.includes('cancelado')) {
+            cancelledByUser = true;
+            break;
+          }
           if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
             mainWindowGlobal.webContents.send('log', tabId, `⚠️ Erro ao processar vídeo: ${error.message}`);
           }
@@ -1842,10 +1973,8 @@ ipcMain.handle("start-download", async (event, dados) => {
       return downloadChunk(tabId, dados, finalDownloadPath);
     }
   } catch (error) {
-    // Resetar flag de cancelamento quando houver erro
-    if (downloadCancelledFlags.get(tabId)) {
-      downloadCancelledFlags.set(tabId, false);
-    }
+    // NÃO resetar a flag aqui - será resetada no cancel-download handler
+    // para garantir que todos os processos parem antes
     throw error;
   }
 });
@@ -1855,8 +1984,41 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
   const { type, format, resolution, cookiesFilePath, allowLowerQuality } = dados;
   
   return new Promise((resolve, reject) => {
+    // Verificar cancelamento antes de iniciar
+    if (downloadCancelledFlags.get(tabId)) {
+      console.log(`🛑 downloadSingleVideo: Cancelamento detectado antes de iniciar (tabId: ${tabId})`);
+      reject(new Error('Download cancelado'));
+      return;
+    }
+    
     const ytdlpPath = path.join(binPath, 'yt-dlp.exe');
     const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
+    
+    // Verificar se yt-dlp existe
+    if (!fs.existsSync(ytdlpPath)) {
+      const errorMsg = `❌ ERRO: yt-dlp não encontrado em: ${ytdlpPath}\nReinstale as dependências nas Configurações.`;
+      console.error(errorMsg);
+      if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, errorMsg);
+      }
+      reject(new Error('yt-dlp não encontrado'));
+      return;
+    }
+    
+    // Verificar se ffmpeg existe
+    if (!fs.existsSync(ffmpegPath)) {
+      const errorMsg = `❌ ERRO: ffmpeg não encontrado em: ${ffmpegPath}\nReinstale as dependências nas Configurações.`;
+      console.error(errorMsg);
+      if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, errorMsg);
+      }
+      reject(new Error('ffmpeg não encontrado'));
+      return;
+    }
+    
+    console.log(`✅ Dependências encontradas:`);
+    console.log(`   yt-dlp: ${ytdlpPath}`);
+    console.log(`   ffmpeg: ${ffmpegPath}`);
     
     const args = [];
     
@@ -1888,7 +2050,9 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
     args.push('--no-playlist');
     
     // Cookies e anti-bot
-    const useBrowserCookies = prefs?.useBrowserCookies !== false;
+    const browserPath = prefs?.browserPath || '';
+    const useBrowserCookies = browserPath.trim() !== '';
+    const hasCookies = (cookiesFilePath && cookiesFilePath.trim() !== '') || useBrowserCookies;
     
     if (cookiesFilePath && cookiesFilePath.trim() !== '') {
       args.push('--cookies', cookiesFilePath);
@@ -1896,12 +2060,15 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
       args.push('--cookies-from-browser', browser);
     }
     
+    // iOS client causa erro de PO Token quando tem cookies - usar apenas sem cookies
+    const playerClient = hasCookies ? 'web,web_creator' : 'ios,web,web_creator';
+    
     args.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
     args.push('--add-header', 'Accept-Language:pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7');
     args.push('--add-header', 'Accept-Encoding:gzip, deflate, br');
     args.push('--add-header', 'Referer:https://www.youtube.com/');
-    args.push('--extractor-args', 'youtube:player_client=web,web_creator;skip=translated_subs');
+    args.push('--extractor-args', `youtube:player_client=${playerClient};skip=translated_subs`);
     args.push('--extractor-retries', '5');
     args.push('--fragment-retries', '5');
     args.push('--sleep-interval', '1');
@@ -1911,9 +2078,17 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
     args.push('--newline');
     args.push(videoUrl);
     
-    const ytdlp = spawn(ytdlpPath, args);
+    const ytdlp = spawn(ytdlpPath, args, getYtdlpSpawnOptions());
+    downloadProcesses.set(tabId, ytdlp); // Armazenar para permitir cancelamento
     
     ytdlp.stdout.on('data', (data) => {
+      // Verificar se foi cancelado durante download
+      if (downloadCancelledFlags.get(tabId)) {
+        console.log(`🛑 downloadSingleVideo: Cancelamento detectado durante download (tabId: ${tabId}), matando processo`);
+        ytdlp.kill('SIGTERM');
+        reject(new Error('Download cancelado'));
+        return;
+      }
       const output = data.toString();
       if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
         mainWindowGlobal.webContents.send('log', tabId, output.trim());
@@ -1922,12 +2097,67 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
     
     ytdlp.stderr.on('data', (data) => {
       const error = data.toString();
+      
+      // Verificar se é erro de autenticação
+      const authErrors = [
+        'please sign in',
+        'sign in to confirm',
+        'requires authentication',
+        'po token',
+        'gvs po token'
+      ];
+      
+      const isAuthError = authErrors.some(msg => error.toLowerCase().includes(msg));
+      
+      // Erro de DPAPI (criptografia do Windows)
+      const dpapiError = error.toLowerCase().includes('failed to decrypt with dpapi');
+      if (dpapiError && mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, '🔒 ERRO: Falha ao descriptografar cookies (DPAPI)');
+        mainWindowGlobal.webContents.send('log', tabId, '📌 SOLUÇÕES:');
+        mainWindowGlobal.webContents.send('log', tabId, '   1. FECHE todas as janelas do navegador e tente novamente');
+        mainWindowGlobal.webContents.send('log', tabId, '   2. Execute o DLWave como Administrador');
+        mainWindowGlobal.webContents.send('log', tabId, '   3. OU use cookies.txt manual (recomendado):');
+        mainWindowGlobal.webContents.send('log', tabId, '      • Extensão: "Get cookies.txt LOCALLY"');
+        mainWindowGlobal.webContents.send('log', tabId, '      • Configure em Configurações');
+        mainWindowGlobal.webContents.send('log', tabId, '');
+        return;
+      }
+      
+      // Erro de cookie database locked (navegador aberto)
+      const cookieDbError = error.toLowerCase().includes('could not copy chrome cookie database');
+      if (cookieDbError && mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, '⚠️ ERRO: Cookie Database Bloqueado!');
+        mainWindowGlobal.webContents.send('log', tabId, '🚫 O navegador está ABERTO e bloqueando o acesso aos cookies.');
+        mainWindowGlobal.webContents.send('log', tabId, '📌 SOLUÇÃO: Feche TODAS as janelas do navegador e tente novamente.');
+        mainWindowGlobal.webContents.send('log', tabId, '');
+        return;
+      }
+      
+      if (isAuthError && mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, '🔐 ERRO: Este vídeo requer autenticação (pode ter restrição de idade).');
+        mainWindowGlobal.webContents.send('log', tabId, '📌 SOLUÇÃO:');
+        mainWindowGlobal.webContents.send('log', tabId, '   1. Abra o Brave/Chrome/Edge e faça LOGIN no YouTube');
+        mainWindowGlobal.webContents.send('log', tabId, '   2. Nas Configurações do DLWave:');
+        mainWindowGlobal.webContents.send('log', tabId, '      ✓ Selecione o navegador ou adicione cookies.txt');
+        mainWindowGlobal.webContents.send('log', tabId, '   3. Tente baixar novamente');
+        return;
+      }
+      
       if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
         mainWindowGlobal.webContents.send('log', tabId, error.trim());
       }
     });
     
     ytdlp.on('close', (code) => {
+      downloadProcesses.delete(tabId); // Remover referência ao finalizar
+      
+      // Se foi cancelado, rejeitar
+      if (downloadCancelledFlags.get(tabId)) {
+        console.log(`🛑 downloadSingleVideo: Processo fechado com cancelamento ativo (tabId: ${tabId})`);
+        reject(new Error('Download cancelado'));
+        return;
+      }
+      
       if (code === 0) {
         resolve({ sucesso: true });
       } else {
@@ -1948,6 +2178,32 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
   return new Promise((resolve, reject) => {
     const ytdlpPath = path.join(binPath, 'yt-dlp.exe');
     const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
+    
+    // Verificar se yt-dlp existe
+    if (!fs.existsSync(ytdlpPath)) {
+      const errorMsg = `❌ ERRO: yt-dlp não encontrado em: ${ytdlpPath}\nReinstale as dependências nas Configurações.`;
+      console.error(errorMsg);
+      if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, errorMsg);
+      }
+      reject(new Error('yt-dlp não encontrado'));
+      return;
+    }
+    
+    // Verificar se ffmpeg existe
+    if (!fs.existsSync(ffmpegPath)) {
+      const errorMsg = `❌ ERRO: ffmpeg não encontrado em: ${ffmpegPath}\nReinstale as dependências nas Configurações.`;
+      console.error(errorMsg);
+      if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, errorMsg);
+      }
+      reject(new Error('ffmpeg não encontrado'));
+      return;
+    }
+    
+    console.log(`✅ Dependências encontradas (chunk ${playlistStart}-${playlistEnd}):`);
+    console.log(`   yt-dlp: ${ytdlpPath}`);
+    console.log(`   ffmpeg: ${ffmpegPath}`);
     
     // Detectar browser para cookies
     const prefs = loadPreferences();
@@ -1999,7 +2255,9 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
     }
     
     // Cookies e anti-bot measures
-    const useBrowserCookies = prefs?.useBrowserCookies !== false;
+    const browserPath = prefs?.browserPath || '';
+    const useBrowserCookies = browserPath.trim() !== '';
+    const hasCookies = (cookiesFilePath && cookiesFilePath.trim() !== '') || useBrowserCookies;
     
     if (cookiesFilePath && cookiesFilePath.trim() !== '') {
       args.push('--cookies', cookiesFilePath);
@@ -2007,12 +2265,15 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
       args.push('--cookies-from-browser', browser);
     }
     
+    // iOS client causa erro de PO Token quando tem cookies - usar apenas sem cookies
+    const playerClient = hasCookies ? 'web,web_creator' : 'ios,web,web_creator';
+    
     args.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
     args.push('--add-header', 'Accept-Language:pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7');
     args.push('--add-header', 'Accept-Encoding:gzip, deflate, br');
     args.push('--add-header', 'Referer:https://www.youtube.com/');
-    args.push('--extractor-args', 'youtube:player_client=web,web_creator;skip=translated_subs');
+    args.push('--extractor-args', `youtube:player_client=${playerClient};skip=translated_subs`);
     args.push('--extractor-retries', '5');
     args.push('--fragment-retries', '5');
     args.push('--sleep-interval', '1');
@@ -2023,14 +2284,28 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
     args.push('--newline'); // Nova linha para cada atualização de progresso
     args.push(url);
     
-    const ytdlp = spawn(ytdlpPath, args);
+    const ytdlp = spawn(ytdlpPath, args, getYtdlpSpawnOptions());
     downloadProcesses.set(tabId, ytdlp); // Armazenar referência para cancelamento
     
     // Capturar saída
     ytdlp.stdout.on('data', (data) => {
+      // Verificar se foi cancelado durante download
+      if (downloadCancelledFlags.get(tabId)) {
+        ytdlp.kill('SIGTERM');
+        return;
+      }
+      
       const output = data.toString();
       if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
         mainWindowGlobal.webContents.send('log', tabId, output.trim());
+        
+        // Detectar progresso de playlist: [download] Downloading video 2 of 5
+        const playlistMatch = output.match(/Downloading (?:video|item) (\d+) of (\d+)/i);
+        if (playlistMatch) {
+          const current = playlistMatch[1];
+          const total = playlistMatch[2];
+          mainWindowGlobal.webContents.send('log', tabId, `[${current}/${total}]`);
+        }
       }
     });
     
@@ -2075,6 +2350,51 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
         mainWindowGlobal.webContents.send('log', tabId, '💾 ERRO: Espaço em disco insuficiente! Libere espaço e tente novamente.');
       }
       
+      // Verificar se é erro de autenticação (Please sign in)
+      const authErrors = [
+        'please sign in',
+        'sign in to confirm',
+        'requires authentication',
+        'po token',
+        'gvs po token'
+      ];
+      
+      const isAuthError = authErrors.some(msg => error.toLowerCase().includes(msg));
+      
+      // Erro de DPAPI (criptografia do Windows)
+      const dpapiError = error.toLowerCase().includes('failed to decrypt with dpapi');
+      if (dpapiError && mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, '🔒 ERRO: Falha ao descriptografar cookies (DPAPI)');
+        mainWindowGlobal.webContents.send('log', tabId, '📌 SOLUÇÕES:');
+        mainWindowGlobal.webContents.send('log', tabId, '   1. FECHE todas as janelas do navegador e tente novamente');
+        mainWindowGlobal.webContents.send('log', tabId, '   2. Execute o DLWave como Administrador');
+        mainWindowGlobal.webContents.send('log', tabId, '   3. OU use cookies.txt manual (recomendado):');
+        mainWindowGlobal.webContents.send('log', tabId, '      • Extensão: "Get cookies.txt LOCALLY"');
+        mainWindowGlobal.webContents.send('log', tabId, '      • Configure em Configurações');
+        mainWindowGlobal.webContents.send('log', tabId, '');
+        return;
+      }
+      
+      // Erro de cookie database locked (navegador aberto)
+      const cookieDbError = error.toLowerCase().includes('could not copy chrome cookie database');
+      if (cookieDbError && mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, '⚠️ ERRO: Cookie Database Bloqueado!');
+        mainWindowGlobal.webContents.send('log', tabId, '🚫 O navegador está ABERTO e bloqueando o acesso aos cookies.');
+        mainWindowGlobal.webContents.send('log', tabId, '📌 SOLUÇÃO: Feche TODAS as janelas do navegador e tente novamente.');
+        mainWindowGlobal.webContents.send('log', tabId, '');
+        return;
+      }
+      
+      if (isAuthError && mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, '🔐 ERRO: Este vídeo requer autenticação (pode ter restrição de idade).');
+        mainWindowGlobal.webContents.send('log', tabId, '📌 SOLUÇÃO:');
+        mainWindowGlobal.webContents.send('log', tabId, '   1. Abra o Brave/Chrome/Edge e faça LOGIN no YouTube');
+        mainWindowGlobal.webContents.send('log', tabId, '   2. Nas Configurações do DLWave:');
+        mainWindowGlobal.webContents.send('log', tabId, '      ✓ Selecione o navegador ou adicione cookies.txt');
+        mainWindowGlobal.webContents.send('log', tabId, '   3. Tente baixar novamente');
+        return; // Não mostrar erro bruto
+      }
+      
       if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
         mainWindowGlobal.webContents.send('log', tabId, error.trim());
       }
@@ -2107,14 +2427,19 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
 
 // Handler para cancelar download
 ipcMain.handle("cancel-download", async (event, tabId) => {
+  console.log(`🛑 Cancelamento solicitado para tabId: ${tabId}`);
   const downloadProcess = downloadProcesses.get(tabId);
-  if (downloadProcess) {
-    try {
-      downloadCancelledFlags.set(tabId, true);
-      
+  
+  try {
+    // Setar flag de cancelamento SEMPRE (mesmo sem processo ativo)
+    downloadCancelledFlags.set(tabId, true);
+    console.log(`🚩 Flag de cancelamento setada para tabId: ${tabId}`);
+    
+    if (downloadProcess) {
+      console.log(`💀 Matando processo PID: ${downloadProcess.pid}`);
       // No Windows, precisamos matar o processo de forma mais agressiva
       if (process.platform === 'win32') {
-        // Usar taskkill para formar o encerramento no Windows
+        // Usar taskkill para forçar o encerramento no Windows
         exec(`taskkill /pid ${downloadProcess.pid} /T /F`, (error) => {
           if (error) {
             console.error('Erro ao matar processo:', error);
@@ -2130,13 +2455,21 @@ ipcMain.handle("cancel-download", async (event, tabId) => {
       if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
         mainWindowGlobal.webContents.send('log', tabId, 'Download cancelado!');
       }
-      
-      return { sucesso: true, mensagem: 'Download cancelado' };
-    } catch (error) {
-      return { sucesso: false, mensagem: `Erro ao cancelar: ${error.message}` };
     }
+    
+    // Aguardar um pouco para garantir que o loop de playlist detecte o cancelamento
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Resetar a flag após dar tempo de tudo parar
+    console.log(`✅ Resetando flag de cancelamento para tabId: ${tabId}`);
+    downloadCancelledFlags.set(tabId, false);
+    
+    return { sucesso: true, mensagem: 'Download cancelado' };
+  } catch (error) {
+    // Resetar flag mesmo em caso de erro
+    downloadCancelledFlags.set(tabId, false);
+    return { sucesso: false, mensagem: `Erro ao cancelar: ${error.message}` };
   }
-  return { sucesso: false, mensagem: 'Nenhum download em andamento' };
 });
 
 // Handler para salvar preferencias
@@ -2176,6 +2509,11 @@ ipcMain.handle("load-preferences", async () => {
 // Handler para obter caminho da pasta bin
 ipcMain.handle("get-bin-path", async () => {
   return binPath;
+});
+
+// Handler para obter versão do app
+ipcMain.handle("get-app-version", async () => {
+  return app.getVersion();
 });
 
 // Handler para abrir pasta bin

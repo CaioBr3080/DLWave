@@ -939,13 +939,25 @@ class TabManager {
       
       // Esconder barra de fila
       this.hideQueueDisplay(tabId);
-    } catch (error) {
-      this.logToTab(tabId, `❌ Erro: ${error.message}`, 'error');
-      this.hideQueueDisplay(tabId);
-    } finally {
+      
+      // Resetar botões após sucesso
       btnDownload.style.display = 'inline-block';
       btnCancelDownload.style.display = 'none';
       state.downloadProcess = null;
+    } catch (error) {
+      // Verificar se foi erro de cancelamento
+      const wasCancelled = error.message && error.message.toLowerCase().includes('cancelado');
+      
+      this.logToTab(tabId, `❌ Erro: ${error.message}`, 'error');
+      this.hideQueueDisplay(tabId);
+      
+      // Só resetar botões se NÃO foi cancelamento
+      // (o cancelamento já gerencia os botões)
+      if (!wasCancelled && !state.cancelRequested) {
+        btnDownload.style.display = 'inline-block';
+        btnCancelDownload.style.display = 'none';
+        state.downloadProcess = null;
+      }
     }
   }
   
@@ -958,14 +970,27 @@ class TabManager {
     
     this.logToTab(tabId, '🛑 Cancelando download...', 'info');
     
+    const btnDownload = tab.content.querySelector('.btn-download');
     const btnCancelDownload = tab.content.querySelector('.btn-cancel-download');
     btnCancelDownload.disabled = true;
     btnCancelDownload.textContent = 'Cancelando...';
     
-    await window.api.cancelDownload(tabId);
-    
-    btnCancelDownload.disabled = false;
-    btnCancelDownload.textContent = 'Cancelar Download';
+    try {
+      await window.api.cancelDownload(tabId);
+      
+      // Após cancelamento confirmado, resetar UI
+      this.logToTab(tabId, '✅ Download cancelado com sucesso', 'info');
+      btnDownload.style.display = 'inline-block';
+      btnCancelDownload.style.display = 'none';
+      btnCancelDownload.disabled = false;
+      btnCancelDownload.textContent = 'Cancelar Download';
+      tab.state.downloadProcess = null;
+      this.hideQueueDisplay(tabId);
+    } catch (error) {
+      this.logToTab(tabId, `⚠️ Erro ao cancelar: ${error.message}`, 'error');
+      btnCancelDownload.disabled = false;
+      btnCancelDownload.textContent = 'Cancelar Download';
+    }
   }
   
   checkIfPlaylist(url) {
@@ -1035,8 +1060,8 @@ class TabManager {
     logArea.scrollTop = logArea.scrollHeight;
     
     // Atualizar contador de fila quando baixar item da playlist
-    if (tab.state.isPlaylistDownload && message.includes('Baixando item')) {
-      const match = message.match(/(\d+)\/(\d+)/);
+    if (tab.state.isPlaylistDownload) {
+      const match = message.match(/\[(\d+)\/(\d+)\]/);
       if (match) {
         tab.state.currentItem = parseInt(match[1]) - 1;
         this.updateQueueDisplay(tabId);
@@ -1422,7 +1447,7 @@ function showConfirmDialog(options) {
     modal.innerHTML = `
       <div class="settings-modal" style="max-width: 500px;">
         <div class="settings-header" style="background: ${options.type === 'warning' ? '#ff9800' : options.type === 'error' ? '#f44336' : '#2196f3'};">
-          <h2>${icon} ${options.title}</h2>
+          <h2 style="color: #ffffff !important; background: none !important; -webkit-background-clip: initial !important; -webkit-text-fill-color: #ffffff !important; text-shadow: 0 1px 3px rgba(0,0,0,0.3);">${icon} ${options.title}</h2>
         </div>
         <div class="settings-content" style="padding: 25px;">
           <p style="font-size: 16px; margin: 0 0 10px 0; color: #fff;">${options.message}</p>
@@ -1571,7 +1596,7 @@ function showFileInUseWarning(fileName) {
     <div class="confirm-modal">
       <div class="confirm-header" style="background: linear-gradient(135deg, #f44336, #e91e63);">
         <span class="confirm-icon">🔒</span>
-        <h3>${t('fileInUseTitle')}</h3>
+        <h3 style="color: #ffffff !important; background: none !important; -webkit-background-clip: initial !important; -webkit-text-fill-color: #ffffff !important; text-shadow: 0 1px 3px rgba(0,0,0,0.3);">${t('fileInUseTitle')}</h3>
       </div>
       <div class="confirm-body">
         <p style="margin-bottom: 15px;">${t('fileInUseMessage')}</p>
@@ -1630,9 +1655,22 @@ async function showSettingsModal() {
   const modal = document.createElement('div');
   modal.className = 'settings-modal-overlay';
   modal.innerHTML = `
+    <style>
+      #playlistLimit::-webkit-inner-spin-button,
+      #playlistLimit::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+      #playlistLimit {
+        -moz-appearance: textfield;
+      }
+    </style>
     <div class="settings-modal">
       <div class="settings-header">
-        <h2>⚙️ Configurações</h2>
+        <div style="text-align: left; flex: 1;">
+          <h2 style="margin: 0;">⚙️ Configurações</h2>
+          <span style="font-size: 12px; color: #999; margin-top: 5px; display: block;">DLWave v<span id="appVersion">...</span></span>
+        </div>
         <button class="btn-close-modal" onclick="this.closest('.settings-modal-overlay').remove()">×</button>
       </div>
       <div class="settings-content">
@@ -1646,6 +1684,12 @@ async function showSettingsModal() {
               <span class="info-value" id="binPath">-</span>
             </div>
             <button class="btn-open-bin" id="btnOpenBin" style="margin-top: 10px;">📁 Abrir Pasta Bin</button>
+          </div>
+          
+          <div class="settings-section" style="margin-top: 20px;">
+            <h4>Limite de Playlist</h4>
+            <p class="settings-description">Número máximo de vídeos a processar em playlists (máximo: 10000)</p>
+            <input type="number" id="playlistLimit" min="1" max="10000" placeholder="1000" style="width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; color: #fff; border-radius: 4px; font-size: 14px; margin-top: 10px;">
           </div>
           
           <div class="settings-checkbox">
@@ -1696,16 +1740,15 @@ async function showSettingsModal() {
             <h4>Navegador para Cookies (Anti-Bot)</h4>
             <p class="settings-description">Importa cookies automaticamente do navegador selecionado para evitar detecção de bot. Você precisa estar logado no YouTube neste navegador.</p>
             <div style="margin-top: 10px;">
-              <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; cursor: pointer;">
-                <input type="checkbox" id="useBrowserCookiesCheckbox" style="width: 18px; height: 18px; cursor: pointer;">
-                <span style="font-size: 14px; color: #e0e0e0;">Usar cookies do navegador automaticamente</span>
-              </label>
               <input type="text" id="browserPath" readonly placeholder="Selecione o executável do navegador (chrome.exe, brave.exe, firefox.exe, etc.)" style="width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; margin-bottom: 10px;">
               <div style="display: flex; gap: 10px;">
                 <button class="btn-browse" id="btnSelectBrowser" style="padding: 8px 16px;" title="Selecione o executável do navegador">🌐 Selecionar Navegador</button>
                 <button class="btn-browse" id="btnClearBrowser" style="padding: 8px 16px; display: none;" title="Remover navegador configurado">🗑️ Remover</button>
               </div>
               <p style="font-size: 12px; color: #999; margin-top: 8px;">Selecione o executável do seu navegador (ex: chrome.exe, brave.exe, msedge.exe, firefox.exe). Funciona com qualquer navegador.</p>
+              <div style="background: #ffeb3b20; border-left: 3px solid #ffeb3b; padding: 10px; margin-top: 10px; border-radius: 4px;">
+                <p style="font-size: 12px; color: #ffeb3b; margin: 0;">⚠️ <strong>IMPORTANTE:</strong> O navegador precisa estar <strong>FECHADO</strong> para que os cookies possam ser extraídos. Feche todas as janelas do navegador antes de baixar.</p>
+              </div>
             </div>
           </div>
           
@@ -1724,7 +1767,7 @@ async function showSettingsModal() {
           
           <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #3a3a3a;">
             <h4 style="color: #f44336; margin-bottom: 10px;">⚠️ Zona de Perigo</h4>
-            <button class="btn-save-prefs" id="btnResetAll" style="background: #f44336; margin-top: 10px;" title="Remove TODAS as configurações e tabs salvas. Use se algo estiver com comportamento estranho.">🗑️ Resetar Tudo (Limpar Cache)</button>
+            <button class="btn-save-prefs" id="btnResetAll" style="background: #f44336; margin-top: 10px;" title="Remove TODAS as configurações e tabs salvas. Use se algo estiver com comportamento estranho.">Resetar Tudo (Limpar Cache)</button>
           </div>
         </div>
       </div>
@@ -1736,6 +1779,11 @@ async function showSettingsModal() {
   // Preencher valores
   const binPathEl = modal.querySelector('#binPath');
   const btnOpenBin = modal.querySelector('#btnOpenBin');
+  const appVersionEl = modal.querySelector('#appVersion');
+  
+  // Obter e exibir versão do app
+  const appVersion = await window.api.getAppVersion();
+  appVersionEl.textContent = appVersion;
   
   // Obter e exibir pasta bin
   const binPath = await window.api.getBinPath();
@@ -1750,6 +1798,7 @@ async function showSettingsModal() {
   const savedPrefs = await window.api.loadPreferences();
   console.log('🔧 Preferências carregadas no modal:', savedPrefs);
   
+  const playlistLimitInput = modal.querySelector('#playlistLimit');
   const ignorePlaylistGlobalCheckbox = modal.querySelector('#ignorePlaylistGlobal');
   const minimizeToTrayCheckbox = modal.querySelector('#minimizeToTray');
   const noPlaylistFolderCheckbox = modal.querySelector('#noPlaylistFolder');
@@ -1762,7 +1811,6 @@ async function showSettingsModal() {
   const browserPathInput = modal.querySelector('#browserPath');
   const btnSelectBrowser = modal.querySelector('#btnSelectBrowser');
   const btnClearBrowser = modal.querySelector('#btnClearBrowser');
-  const useBrowserCookiesCheckbox = modal.querySelector('#useBrowserCookiesCheckbox');
   const languageSelect = modal.querySelector('#languageSelect');
   
   // Definir idioma atual no select
@@ -1774,17 +1822,18 @@ async function showSettingsModal() {
     btnClearBrowser.style.display = 'inline-block';
   }
   
+  // Definir valor do limite de playlist
+  playlistLimitInput.value = savedPrefs?.playlistLimit ?? 1000;
+  
   // Sempre definir o estado dos checkboxes explicitamente
   ignorePlaylistGlobalCheckbox.checked = savedPrefs?.ignorePlaylistGlobal ?? false;
   minimizeToTrayCheckbox.checked = savedPrefs?.minimizeToTray ?? false;
   noPlaylistFolderCheckbox.checked = savedPrefs?.noPlaylistFolder ?? false;
-  useBrowserCookiesCheckbox.checked = savedPrefs?.useBrowserCookies ?? true; // Default: true
   
   console.log('🎛️ Checkboxes configurados:', {
     ignorePlaylistGlobal: ignorePlaylistGlobalCheckbox.checked,
     minimizeToTray: minimizeToTrayCheckbox.checked,
-    noPlaylistFolder: noPlaylistFolderCheckbox.checked,
-    useBrowserCookies: useBrowserCookiesCheckbox.checked
+    noPlaylistFolder: noPlaylistFolderCheckbox.checked
   });
   
   if (savedPrefs?.defaultDownloadPath) {
@@ -1850,14 +1899,26 @@ async function showSettingsModal() {
   
   // Botão salvar
   modal.querySelector('#btnSavePrefs').addEventListener('click', async () => {
+    // Validar limite de playlist
+    let playlistLimit = parseInt(playlistLimitInput.value) || 1000;
+    if (playlistLimit > 10000) {
+      alert('⚠️ O limite máximo de playlist é 10000 vídeos!\n\nValor ajustado para 10000.');
+      playlistLimit = 10000;
+      playlistLimitInput.value = 10000;
+    }
+    if (playlistLimit < 1) {
+      playlistLimit = 1;
+      playlistLimitInput.value = 1;
+    }
+    
     const prefs = {
+      playlistLimit: playlistLimit,
       ignorePlaylistGlobal: ignorePlaylistGlobalCheckbox.checked,
       minimizeToTray: minimizeToTrayCheckbox.checked,
       noPlaylistFolder: noPlaylistFolderCheckbox.checked,
       defaultDownloadPath: defaultDownloadPathInput.value || '',
       cookiesFilePath: cookiesFilePathInput.value || '',
-      browserPath: browserPathInput.value || '',
-      useBrowserCookies: useBrowserCookiesCheckbox.checked
+      browserPath: browserPathInput.value || ''
     };
     
     console.log('🔧 Salvando preferências (renderer):', prefs);
