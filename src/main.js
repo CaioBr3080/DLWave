@@ -903,9 +903,22 @@ function getYtdlpSpawnOptions() {
   // Obter diretório do Node.js embutido no Electron
   const electronNodePath = path.dirname(process.execPath);
   
-  // Criar cópia do PATH atual e adicionar o Node.js do Electron no início
+  // Adicionar locais comuns do Node.js no Windows
+  const commonNodePaths = [
+    electronNodePath,
+    'C:\\Program Files\\nodejs',
+    'C:\\Program Files (x86)\\nodejs',
+    path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'nodejs'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'nodejs'),
+    path.join(process.env.APPDATA || '', 'npm')
+  ].filter(p => p && fs.existsSync(p)).join(';');
+  
+  // Criar cópia do PATH atual e adicionar os caminhos do Node.js no início
   const currentPath = process.env.PATH || '';
-  const newPath = `${electronNodePath};${currentPath}`;
+  const newPath = `${commonNodePaths};${currentPath}`;
+  
+  console.log('🔧 PATH configurado para yt-dlp:');
+  console.log(`   Node.js paths: ${commonNodePaths}`);
   
   return {
     env: {
@@ -915,7 +928,7 @@ function getYtdlpSpawnOptions() {
       // Ao invés de tentar baixar/usar PhantomJS
       NODE_OPTIONS: '',
       // Define explicitamente onde está o Node.js
-      NODE_PATH: electronNodePath
+      NODE_PATH: commonNodePaths.split(';')[0]
     }
   };
 }
@@ -2074,11 +2087,35 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
     args.push('--sleep-interval', '1');
     args.push('--max-sleep-interval', '5');
     args.push('--source-address', '0.0.0.0');
+    
+    // Verificar se Node.js está disponível
+    const spawnOptions = getYtdlpSpawnOptions();
+    console.log('🔍 Verificando Node.js disponível...');
+    try {
+      const nodeCheck = spawn('node', ['--version'], spawnOptions);
+      let nodeVersion = '';
+      nodeCheck.stdout.on('data', (data) => { nodeVersion += data.toString(); });
+      nodeCheck.on('close', (code) => {
+        if (code === 0) {
+          console.log(`✅ Node.js encontrado: ${nodeVersion.trim()}`);
+        } else {
+          console.warn('⚠️ Node.js NÃO encontrado! yt-dlp pode falhar em resolver desafios JavaScript');
+          if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+            mainWindowGlobal.webContents.send('log', tabId, '⚠️ AVISO: Node.js não detectado. Alguns vídeos podem falhar.');
+          }
+        }
+      });
+    } catch (err) {
+      console.error('❌ Erro ao verificar Node.js:', err);
+    }
+    
     args.push('--progress');
     args.push('--newline');
     args.push(videoUrl);
     
-    const ytdlp = spawn(ytdlpPath, args, getYtdlpSpawnOptions());
+    console.log('🚀 Iniciando download com argumentos:', args.join(' '));
+    
+    const ytdlp = spawn(ytdlpPath, args, spawnOptions);
     downloadProcesses.set(tabId, ytdlp); // Armazenar para permitir cancelamento
     
     let stderrBuffer = ''; // Buffer para acumular erros
@@ -2292,6 +2329,8 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
     args.push('--progress'); // Mostrar progresso
     args.push('--newline'); // Nova linha para cada atualização de progresso
     args.push(url);
+    
+    console.log(`🚀 Iniciando download chunk ${playlistStart}-${playlistEnd}`);
     
     const ytdlp = spawn(ytdlpPath, args, getYtdlpSpawnOptions());
     downloadProcesses.set(tabId, ytdlp); // Armazenar referência para cancelamento
