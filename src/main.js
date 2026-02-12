@@ -65,10 +65,21 @@ app.whenReady().then(() => {
 
 // Função para verificar e instalar dependências automaticamente
 async function verificarEInstalarDeps() {
+  console.log('🔍 Verificando dependências...');
   const deps = await verificarDependencias();
+  console.log('📊 Status das dependências:', {
+    ffmpeg: deps.ffmpeg,
+    ytdlp: deps.ytdlp,
+    ytdlpGlobal: deps.ytdlpGlobal,
+    ytdlpLocal: deps.ytdlpLocal,
+    todasOk: deps.todasOk
+  });
+  
   if (!deps.todasOk) {
-    console.log('Dependências faltando:', { ffmpeg: deps.ffmpeg, ytdlp: deps.ytdlp });
+    console.log('⚠️ Dependências faltando! Abrindo UI de instalação...');
     await instalarDepsComUI();
+  } else {
+    console.log('✅ Todas as dependências estão OK!');
   }
 }
 
@@ -2162,9 +2173,21 @@ function getYtdlpPath() {
   return new Promise((resolve) => {
     exec('where yt-dlp', (error, stdout) => {
       if (!error && stdout.trim()) {
-        const globalPath = stdout.trim().split('\n')[0]; // Pegar primeiro resultado
-        console.log(`🌐 yt-dlp GLOBAL detectado: ${globalPath}`);
-        resolve(globalPath);
+        const paths = stdout.trim().split('\n');
+        
+        // Tentar encontrar um .exe válido nos caminhos retornados
+        for (const p of paths) {
+          const cleanPath = p.trim();
+          if (fs.existsSync(cleanPath)) {
+            console.log(`🌐 yt-dlp GLOBAL encontrado e validado: ${cleanPath}`);
+            resolve(cleanPath);
+            return;
+          }
+        }
+        
+        // Se where encontrou mas nenhum arquivo existe, tentar apenas 'yt-dlp' (deixar o sistema resolver)
+        console.log(`⚠️ where encontrou yt-dlp mas arquivos não existem. Usando 'yt-dlp' genérico.`);
+        resolve('yt-dlp'); // Sem caminho, deixa o sistema resolver via PATH
       } else {
         // Usar o local
         const localPath = path.join(binPath, 'yt-dlp.exe');

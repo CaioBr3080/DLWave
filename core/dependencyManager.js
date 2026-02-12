@@ -24,9 +24,11 @@ function setBinPath(customPath) {
  */
 async function isWingetAvailable() {
   try {
-    await execAsync('winget --version');
+    const { stdout } = await execAsync('winget --version');
+    console.log('✅ winget encontrado! Versão:', stdout.trim());
     return true;
   } catch (error) {
+    console.log('❌ winget NÃO encontrado no sistema');
     return false;
   }
 }
@@ -37,8 +39,13 @@ async function isWingetAvailable() {
 async function isYtdlpGlobal() {
   try {
     const { stdout } = await execAsync('where yt-dlp');
-    return stdout.trim().length > 0;
+    const found = stdout.trim().length > 0;
+    if (found) {
+      console.log('✅ yt-dlp encontrado no PATH:', stdout.trim().split('\n')[0]);
+    }
+    return found;
   } catch (error) {
+    console.log('❌ yt-dlp NÃO encontrado no PATH');
     return false;
   }
 }
@@ -48,47 +55,67 @@ async function isYtdlpGlobal() {
  */
 async function installYtdlpViaWinget(onProgress) {
   return new Promise((resolve, reject) => {
-    onProgress?.({ etapa: 'Instalando yt-dlp via winget...', percent: 0 });
+    console.log('🚀 Iniciando instalação do yt-dlp via winget...');
+    onProgress?.({ etapa: 'Instalando yt-dlp via winget...', percent: 10 });
     
     // Usar spawn para capturar saída em tempo real
-    const process = spawn('winget', ['install', '--id', 'yt-dlp.yt-dlp', '--accept-source-agreements', '--accept-package-agreements', '--silent'], {
-      shell: true
+    const process = spawn('winget', [
+      'install', 
+      '--id', 'yt-dlp.yt-dlp', 
+      '--accept-source-agreements', 
+      '--accept-package-agreements'
+    ], {
+      shell: true,
+      windowsHide: false // Mostrar janela para debug
     });
     
     let output = '';
     let errorOutput = '';
     
     process.stdout.on('data', (data) => {
-      output += data.toString();
-      console.log('winget:', data.toString());
+      const text = data.toString();
+      output += text;
+      console.log('📦 [winget stdout]:', text);
       
-      // Detectar progresso (winget não tem barra de progresso, então simular)
-      if (data.toString().includes('Downloading')) {
+      // Detectar progresso
+      if (text.includes('Downloading') || text.includes('Download')) {
         onProgress?.({ etapa: 'Baixando yt-dlp via winget...', percent: 30 });
-      } else if (data.toString().includes('Installing')) {
+      } else if (text.includes('Installing') || text.includes('Install')) {
         onProgress?.({ etapa: 'Instalando yt-dlp...', percent: 60 });
+      } else if (text.includes('Successfully installed') || text.includes('successfully')) {
+        onProgress?.({ etapa: '✅ yt-dlp instalado com sucesso!', percent: 90 });
       }
     });
     
     process.stderr.on('data', (data) => {
-      errorOutput += data.toString();
-      console.error('winget stderr:', data.toString());
+      const text = data.toString();
+      errorOutput += text;
+      console.error('⚠️ [winget stderr]:', text);
     });
     
     process.on('close', async (code) => {
-      if (code === 0 || output.includes('successfully installed')) {
+      console.log(`📋 winget finalizou com código: ${code}`);
+      console.log(`📋 Output completo: ${output}`);
+      
+      if (code === 0 || output.includes('successfully installed') || output.includes('Successfully installed')) {
         onProgress?.({ etapa: 'yt-dlp instalado via winget!', percent: 100 });
         
-        // Aguardar um pouco para PATH atualizar
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        console.log('⏳ Aguardando 3s para PATH atualizar...');
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Verificar se realmente instalou
+        const instalado = await isYtdlpGlobal();
+        console.log(`🔍 Verificação pós-instalação: yt-dlp ${instalado ? 'ENCONTRADO' : 'NÃO ENCONTRADO'} no PATH`);
         
         resolve({ sucesso: true, metodo: 'winget' });
       } else {
-        reject(new Error(`winget falhou com código ${code}: ${errorOutput}`));
+        console.error(`❌ winget falhou! Código: ${code}`);
+        reject(new Error(`winget falhou com código ${code}: ${errorOutput || output}`));
       }
     });
     
     process.on('error', (error) => {
+      console.error('❌ Erro ao executar winget:', error);
       reject(error);
     });
   });
@@ -172,9 +199,12 @@ async function downloadFile(url, destPath, onProgress) {
  * Instala as dependências (yt-dlp e ffmpeg)
  */
 async function instalarDeps(onProgress) {
+  console.log('🚀 instalarDeps() iniciado...');
+  
   // Garantir que a pasta bin existe
   if (!fs.existsSync(binPath)) {
     fs.mkdirSync(binPath, { recursive: true });
+    console.log('📁 Pasta bin criada:', binPath);
   }
 
   const ffmpegPath = path.join(binPath, "ffmpeg.exe");
@@ -184,9 +214,11 @@ async function instalarDeps(onProgress) {
     let ytdlpMethod = 'none';
     
     // Verificar se yt-dlp já está instalado globalmente
+    console.log('🔍 Verificando se yt-dlp já está instalado globalmente...');
     const ytdlpAlreadyInstalled = await isYtdlpGlobal();
     
     if (ytdlpAlreadyInstalled) {
+      console.log('✅ yt-dlp já instalado! Pulando instalação.');
       onProgress?.({ 
         etapa: '✅ yt-dlp já instalado no sistema!',
         info: 'Detectado yt-dlp no PATH. Pulando instalação.',
@@ -194,26 +226,31 @@ async function instalarDeps(onProgress) {
       });
       ytdlpMethod = 'existing';
     } else {
+      console.log('❌ yt-dlp não encontrado. Verificando winget...');
       // Verificar se winget está disponível
       const hasWinget = await isWingetAvailable();
       
       if (hasWinget) {
+        console.log('✅ winget disponível! Iniciando instalação do yt-dlp...');
         onProgress?.({ 
           etapa: '🔍 winget detectado! Instalando yt-dlp globalmente...',
-          info: 'O yt-dlp será instalado via Windows Package Manager e adicionado ao PATH do sistema automaticamente.'
+          info: 'O yt-dlp será instalado via Windows Package Manager e adicionado ao PATH do sistema automaticamente.',
+          percent: 5
         });
         
         try {
+          console.log('📦 Chamando installYtdlpViaWinget()...');
           await installYtdlpViaWinget(onProgress);
           ytdlpMethod = 'winget';
           
+          console.log('✅ yt-dlp instalado via winget com sucesso!');
           onProgress?.({ 
             etapa: '✅ yt-dlp instalado globalmente!',
             info: 'Localização: Gerenciado pelo winget (acessível de qualquer lugar)',
             percent: 40
           });
         } catch (error) {
-          console.error('Falha ao instalar via winget:', error);
+          console.error('❌ Falha ao instalar via winget:', error);
           
           // Não há fallback - retornar erro
           return { 
@@ -229,7 +266,7 @@ async function instalarDeps(onProgress) {
         }
       } else {
         // Sem winget e sem yt-dlp global - não pode continuar
-        console.warn('winget não disponível e yt-dlp não encontrado no PATH');
+        console.warn('❌ winget não disponível e yt-dlp não encontrado no PATH');
         
         return { 
           sucesso: false, 
