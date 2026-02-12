@@ -1431,11 +1431,9 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
     const browser = detectBrowser(prefs?.browserPath || '');
     
     const shouldContinue = await new Promise((checkResolve) => {
-      // Usar comando simples para descobrir a MELHOR qualidade real disponível
-      const formatString = `best`;
-      
+      // NÃO usar formato - deixar yt-dlp escolher automaticamente o melhor
+      // (conforme sugerido pelo próprio warning do yt-dlp)
       const checkArgs = [
-        '-f', formatString,
         '--print', '%(height)s',
         '--no-playlist'
       ];
