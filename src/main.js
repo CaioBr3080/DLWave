@@ -1651,9 +1651,21 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
             `)}`);
             
             const userChoice = await new Promise((resolve) => {
+              let isResolved = false;
+              
               ipcMain.once('resolution-warning-response', (event, shouldContinue) => {
-                warningWindow.close();
-                resolve(shouldContinue);
+                if (!isResolved) {
+                  isResolved = true;
+                  warningWindow.close();
+                  resolve(shouldContinue);
+                }
+              });
+              
+              warningWindow.on('closed', () => {
+                if (!isResolved) {
+                  isResolved = true;
+                  resolve(false); // Se usuário fechou a janela, cancelar download
+                }
               });
             });
             
