@@ -1431,9 +1431,8 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
     const browser = detectBrowser(prefs?.browserPath || '');
     
     const shouldContinue = await new Promise((checkResolve) => {
-      let formatString = allowLowerQuality 
-        ? `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]/bestvideo+bestaudio/best`
-        : `bestvideo[height<=${resolution}]+bestaudio`;
+      // SEMPRE usar formato com fallback para ver o que está disponível
+      const formatString = `bestvideo[height<=${resolution}]+bestaudio/bestvideo+bestaudio/best`;
       
       const checkArgs = [
         '-f', formatString,
