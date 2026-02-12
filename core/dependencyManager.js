@@ -231,13 +231,33 @@ async function instalarDeps(onProgress) {
       const hasWinget = await isWingetAvailable();
       
       if (hasWinget) {
-        console.log('✅ winget disponível! Iniciando instalação do yt-dlp...');
-        onProgress?.({ 
-          etapa: '🔍 winget detectado! Instalando yt-dlp globalmente...',
-          info: 'O yt-dlp será instalado via Windows Package Manager e adicionado ao PATH do sistema automaticamente.',
-          percent: 5
+        console.log('✅ winget disponível! Verificando aceitação de termos...');
+        
+        // onProgressCallback especial para solicitar aceitação dos termos
+        const needsTermsAcceptance = await new Promise((resolve) => {
+          onProgress?.({
+            etapa: '📜 Aguardando aceitação dos termos do yt-dlp...',
+            info: 'Uma janela será aberta para você revisar e aceitar os termos de uso.',
+            percent: 5,
+            requestTermsAcceptance: true, // Sinal especial
+            onTermsResponse: resolve
+          });
         });
         
+        if (!needsTermsAcceptance) {
+          console.log('❌ Usuário recusou os termos do yt-dlp');
+          return {
+            sucesso: false,
+            erro: 'Termos do yt-dlp não aceitos',
+            cancelado: true
+          };
+        }
+        
+        console.log('✅ Termos aceitos! Iniciando instalação do yt-dlp...');
+        onProgress?.({ 
+          etapa: '🔍 Instalando yt-dlp globalmente via winget...',
+          info: 'O yt-dlp será instalado e adicionado ao PATH do sistema automaticamente.',
+          percent: 10        });        
         try {
           console.log('📦 Chamando installYtdlpViaWinget()...');
           await installYtdlpViaWinget(onProgress);

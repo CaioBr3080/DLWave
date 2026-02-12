@@ -293,6 +293,187 @@ async function checkAndShowEULA() {
   });
 }
 
+// Função para mostrar termos do yt-dlp e pedir concordância
+async function mostrarTermosYtdlp() {
+  const termsWindow = new BrowserWindow({
+    width: 650,
+    height: 550,
+    modal: true,
+    parent: mainWindowGlobal,
+    resizable: false,
+    frame: false,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    }
+  });
+
+  termsWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+          background: linear-gradient(135deg, #1e1e1e 0%, #2d2d2d 100%);
+          color: #fff;
+          display: flex;
+          flex-direction: column;
+          height: 100vh;
+          overflow: hidden;
+        }
+        .header {
+          padding: 18px 25px;
+          border-bottom: 1px solid #3a3a3a;
+          -webkit-app-region: drag;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .icon { font-size: 24px; }
+        h2 {
+          font-size: 17px;
+          font-weight: 600;
+          background: linear-gradient(90deg, #0078d4, #00d4ff);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+        .content {
+          flex: 1;
+          padding: 20px 25px;
+          overflow-y: auto;
+        }
+        .terms-box {
+          background: #252525;
+          border: 1px solid #3a3a3a;
+          border-radius: 8px;
+          padding: 18px;
+          margin-bottom: 18px;
+          font-size: 13px;
+          line-height: 1.7;
+          color: #d0d0d0;
+          max-height: 320px;
+          overflow-y: auto;
+        }
+        .terms-box h3 {
+          color: #00d4ff;
+          font-size: 15px;
+          margin-bottom: 12px;
+        }
+        .terms-box p {
+          margin-bottom: 10px;
+        }
+        .terms-box ul {
+          margin-left: 20px;
+          margin-bottom: 10px;
+        }
+        .warning {
+          padding: 12px;
+          background: rgba(255, 152, 0, 0.15);
+          border-left: 3px solid #ff9800;
+          border-radius: 4px;
+          font-size: 12px;
+          color: #ffb74d;
+        }
+        .buttons {
+          display: flex;
+          gap: 12px;
+          padding: 18px 25px;
+          border-top: 1px solid #3a3a3a;
+          background: #252525;
+        }
+        button {
+          flex: 1;
+          padding: 13px;
+          border: none;
+          border-radius: 7px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .btn-accept {
+          background: linear-gradient(90deg, #0078d4, #0098ff);
+          color: white;
+        }
+        .btn-accept:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(0, 120, 212, 0.4);
+        }
+        .btn-decline {
+          background: #3a3a3a;
+          color: #e0e0e0;
+        }
+        .btn-decline:hover { background: #4a4a4a; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e1e1e; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div class="icon">📜</div>
+        <h2>Termos de Uso do yt-dlp</h2>
+      </div>
+      <div class="content">
+        <div class="terms-box">
+          <h3>LICENÇA E TERMOS DE USO</h3>
+          <p><strong>yt-dlp</strong> é um software de código aberto licenciado sob <strong>The Unlicense</strong>.</p>
+          
+          <h3>Permissões:</h3>
+          <ul>
+            <li>Uso comercial e privado</li>
+            <li>Modificação e distribuição</li>
+            <li>Sem restrições de patente</li>
+          </ul>
+
+          <h3>Responsabilidade:</h3>
+          <p>O software é fornecido "como está", sem garantias de qualquer tipo. Os autores não se responsabilizam por qualquer dano decorrente do uso do software.</p>
+
+          <h3>Uso Responsável:</h3>
+          <p>⚠️ <strong>IMPORTANTE:</strong> É de sua responsabilidade usar o yt-dlp de acordo com:</p>
+          <ul>
+            <li>Termos de serviço das plataformas (YouTube, etc.)</li>
+            <li>Leis de direitos autorais do seu país</li>
+            <li>Respeito aos criadores de conteúdo</li>
+          </ul>
+
+          <p style="margin-top: 15px; font-size: 12px; color: #888;">
+            Para mais informações: <br>
+            <a href="#" style="color: #0078d4;">https://github.com/yt-dlp/yt-dlp</a>
+          </p>
+        </div>
+        
+        <div class="warning">
+          ⚠️ Ao aceitar, você confirma que leu e concorda com os termos acima e usará o software de forma responsável e legal.
+        </div>
+      </div>
+      <div class="buttons">
+        <button class="btn-decline" onclick="respond(false)">Recusar</button>
+        <button class="btn-accept" onclick="respond(true)">Aceitar e Instalar</button>
+      </div>
+      
+      <script>
+        const { ipcRenderer } = require('electron');
+        function respond(accepted) {
+          ipcRenderer.send('ytdlp-terms-response', accepted);
+        }
+      </script>
+    </body>
+    </html>
+  `)}`)
+
+  return new Promise((resolve) => {
+    ipcMain.once('ytdlp-terms-response', (event, accepted) => {
+      termsWindow.close();
+      resolve(accepted);
+    });
+  });
+}
+
 async function instalarDepsComUI() {
   // Criar janela de confirmação customizada
   const confirmWindow = new BrowserWindow({
@@ -624,7 +805,17 @@ async function instalarDepsComUI() {
     `)}`);
 
     // Usuário confirmou, iniciar download
-    const resultado = await instalarDeps((progresso) => {
+    const resultado = await instalarDeps(async (progresso) => {
+      // Verificar se é uma solicitação de aceitação de termos
+      if (progresso.requestTermsAcceptance && progresso.onTermsResponse) {
+        console.log('📜 Solicitação de aceitação de termos detectada');
+        const termsAccepted = await mostrarTermosYtdlp();
+        console.log(`📜 Termos ${termsAccepted ? 'ACEITOS' : 'RECUSADOS'} pelo usuário`);
+        progresso.onTermsResponse(termsAccepted);
+        return;
+      }
+      
+      // Progresso normal
       if (progressWindow && !progressWindow.isDestroyed()) {
         progressWindow.webContents.send('progresso', progresso);
       }
