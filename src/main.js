@@ -2488,14 +2488,18 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
       args.push('--audio-quality', '0');
     } else {
       let formatString;
+      console.log('🎬 CONFIGURANDO FORMATO DE DOWNLOAD:', { resolution, allowLowerQuality, type });
       if (resolution && resolution !== 'best') {
         if (allowLowerQuality) {
           formatString = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]/bestvideo+bestaudio/best`;
+          console.log('📺 Usando formato com fallback (allowLowerQuality=true):', formatString);
         } else {
           formatString = `bestvideo[height<=${resolution}]+bestaudio`;
+          console.log('📺 Usando formato estrito (allowLowerQuality=false):', formatString);
         }
       } else {
         formatString = 'bestvideo+bestaudio/best';
+        console.log('📺 Usando formato best (resolution=best ou undefined):', formatString);
       }
       args.push('-f', formatString);
       args.push('--merge-output-format', format);
