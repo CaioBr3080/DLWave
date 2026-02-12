@@ -935,9 +935,10 @@ function getYtdlpSpawnOptions() {
 
 // Handler para extrair informações de playlist
 ipcMain.handle("get-playlist-info", async (event, url) => {
+  // Detectar yt-dlp (global ou local)
+  const ytdlpPath = await getYtdlpPath();
+  
   return new Promise((resolve, reject) => {
-    const ytdlpPath = path.join(binPath, 'yt-dlp.exe');
-    
     // Obter configuração do navegador
     const prefs = loadPreferences();
     const browser = detectBrowser(prefs?.browserPath || '');
@@ -1057,7 +1058,7 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
   }
   
   try {
-    const ytdlpPath = path.join(binPath, 'yt-dlp.exe');
+    const ytdlpPath = await getYtdlpPath();
     const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
     const requestedHeight = parseInt(resolution);
     
@@ -1391,7 +1392,7 @@ ipcMain.handle("start-download", async (event, dados) => {
         
         try {
           // Verificar resolução disponível do vídeo
-          const ytdlpPath = path.join(binPath, 'yt-dlp.exe');
+          const ytdlpPath = await getYtdlpPath();
           const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
           const requestedHeight = parseInt(resolution);
           
@@ -1992,9 +1993,32 @@ ipcMain.handle("start-download", async (event, dados) => {
   }
 });
 
+// Função auxiliar para detectar e retornar o caminho do yt-dlp (global ou local)
+function getYtdlpPath() {
+  // Verificar se yt-dlp está instalado globalmente
+  return new Promise((resolve) => {
+    exec('where yt-dlp', (error, stdout) => {
+      if (!error && stdout.trim()) {
+        const globalPath = stdout.trim().split('\n')[0]; // Pegar primeiro resultado
+        console.log(`🌐 yt-dlp GLOBAL detectado: ${globalPath}`);
+        resolve(globalPath);
+      } else {
+        // Usar o local
+        const localPath = path.join(binPath, 'yt-dlp.exe');
+        console.log(`📦 Usando yt-dlp LOCAL: ${localPath}`);
+        resolve(localPath);
+      }
+    });
+  });
+}
+
 // Função auxiliar para baixar um único vídeo
 async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
   const { type, format, resolution, cookiesFilePath, allowLowerQuality } = dados;
+  
+  // Detectar yt-dlp (global ou local)
+  const ytdlpPath = await getYtdlpPath();
+  const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
   
   return new Promise((resolve, reject) => {
     // Verificar cancelamento antes de iniciar
@@ -2003,9 +2027,6 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
       reject(new Error('Download cancelado'));
       return;
     }
-    
-    const ytdlpPath = path.join(binPath, 'yt-dlp.exe');
-    const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
     
     // Verificar se yt-dlp existe
     if (!fs.existsSync(ytdlpPath)) {
@@ -2221,10 +2242,11 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
 async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = null, playlistEnd = null) {
   const { url, type, format, resolution, ignorePlaylist, cookiesFilePath, allowLowerQuality } = dados;
   
+  // Detectar yt-dlp (global ou local)
+  const ytdlpPath = await getYtdlpPath();
+  const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
+  
   return new Promise((resolve, reject) => {
-    const ytdlpPath = path.join(binPath, 'yt-dlp.exe');
-    const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
-    
     // Verificar se yt-dlp existe
     if (!fs.existsSync(ytdlpPath)) {
       const errorMsg = `❌ ERRO: yt-dlp não encontrado em: ${ytdlpPath}\nReinstale as dependências nas Configurações.`;
