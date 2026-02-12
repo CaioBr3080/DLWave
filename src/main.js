@@ -1433,7 +1433,7 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
     const shouldContinue = await new Promise((checkResolve) => {
       let formatString = allowLowerQuality 
         ? `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]/bestvideo+bestaudio/best`
-        : `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]`;
+        : `bestvideo[height<=${resolution}]+bestaudio`;
       
       const checkArgs = [
         '-f', formatString,
@@ -1773,7 +1773,7 @@ ipcMain.handle("start-download", async (event, dados) => {
           const useBrowserCookies = browserPath.trim() !== '';
           
           // Primeiro: tentar com formato estrito (sem fallback)
-          const strictFormat = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]`;
+          const strictFormat = `bestvideo[height<=${resolution}]+bestaudio`;
           const checkArgs1 = [
             '-f', strictFormat,
             '--print', '%(height)s',
@@ -2477,7 +2477,7 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
         if (allowLowerQuality) {
           formatString = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]/bestvideo+bestaudio/best`;
         } else {
-          formatString = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]`;
+          formatString = `bestvideo[height<=${resolution}]+bestaudio`;
         }
       } else {
         formatString = 'bestvideo+bestaudio/best';
@@ -2702,7 +2702,7 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
           formatString = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]/bestvideo+bestaudio/best`;
         } else {
           // Sem fallback - formato estrito
-          formatString = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]`;
+          formatString = `bestvideo[height<=${resolution}]+bestaudio`;
         }
       } else {
         // Melhor qualidade disponível
