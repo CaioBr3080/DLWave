@@ -556,7 +556,11 @@ async function instalarDepsComUI() {
             }
             
             if (data.etapa) {
-              if (data.etapa.includes('yt-dlp')) {
+              // Detectar tipo de instalação
+              if (data.etapa.includes('winget')) {
+                fileName.textContent = '🌐 yt-dlp (Global)';
+                status.textContent = data.etapa;
+              } else if (data.etapa.includes('yt-dlp')) {
                 fileName.textContent = 'yt-dlp.exe';
                 status.textContent = 'Baixando yt-dlp...';
               } else if (data.etapa.includes('ffmpeg')) {
@@ -565,17 +569,39 @@ async function instalarDepsComUI() {
               } else if (data.etapa.includes('Extraindo')) {
                 fileName.textContent = 'ffmpeg.exe';
                 status.textContent = 'Extraindo arquivo...';
-              } else if (data.etapa.includes('Concluído')) {
+              } else if (data.etapa.includes('Concluído') || data.etapa.includes('✅')) {
                 fileName.textContent = '✓ Concluído';
-                status.textContent = 'Download finalizado com sucesso!';
+                status.textContent = data.info || 'Download finalizado com sucesso!';
               } else {
                 status.textContent = data.etapa;
               }
             }
+            
+            // Mostrar informação adicional se disponível
+            if (data.info && !data.etapa.includes('Concluído')) {
+              const infoElement = document.createElement('div');
+              infoElement.style.fontSize = '11px';
+              infoElement.style.color = '#888';
+              infoElement.style.marginTop = '5px';
+              infoElement.textContent = data.info;
+              
+              // Substituir status existente
+              status.textContent = data.etapa;
+              if (!status.querySelector('.info-extra')) {
+                const infoExtra = document.createElement('div');
+                infoExtra.className = 'info-extra';
+                infoExtra.style.fontSize = '11px';
+                infoExtra.style.color = '#888';
+                infoExtra.style.marginTop = '5px';
+                status.parentElement.appendChild(infoExtra);
+              }
+              const infoExtra = status.parentElement.querySelector('.info-extra');
+              if (infoExtra) infoExtra.textContent = data.info;
+            }
           });
           
           ipcRenderer.on('concluido', () => {
-            setTimeout(() => window.close(), 1000);
+            setTimeout(() => window.close(), 2000);
           });
         </script>
       </body>
