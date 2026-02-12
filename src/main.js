@@ -1475,7 +1475,7 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
       
       checkProcess.on('close', async (code) => {
         if (code === 0 && detectedHeight) {
-          const actualHeight = parseInt(detectedHeight.split('\\n')[0]);
+          const actualHeight = parseInt(detectedHeight.split('\n')[0]);
           
           if (actualHeight < requestedHeight) {
             const resNames = {
