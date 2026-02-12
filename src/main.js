@@ -1414,7 +1414,7 @@ ipcMain.handle("get-playlist-info", async (event, url) => {
   });
 });
 
-// Handler para verificar Resolução (usado antes de downloads)
+// Handler para verificar Resolução (NOVA LÓGICA SEM best/bestvideo)
 ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQuality) => {
   console.log('🔍 check-resolution chamado com:', { url, resolution, allowLowerQuality });
   
@@ -1424,11 +1424,10 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
     return true;
   }
   
-  console.log('✅ Iniciando verificação de resolução...');
+  console.log('✅ Iniciando verificação de resolução (NOVA LÓGICA)...');
   
   try {
     const ytdlpPath = await getYtdlpPath();
-    const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
     const requestedHeight = parseInt(resolution);
     
     // Detectar browser para cookies
@@ -1436,10 +1435,9 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
     const browser = detectBrowser(prefs?.browserPath || '');
     
     const shouldContinue = await new Promise((checkResolve) => {
-      // Usar bestvideo para pegar especificamente a melhor qualidade de vídeo
+      // NOVA ABORDAGEM: Usar --list-formats e fazer parsing manual
       const checkArgs = [
-        '-f', 'bestvideo',
-        '--print', '%(height)s',
+        '--list-formats',
         '--no-playlist'
       ];
       
@@ -1468,32 +1466,48 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
         url
       );
       
-      console.log('🚨 COMANDO COMPLETO:', ytdlpPath, checkArgs.join(' '));
+      console.log('🚨 COMANDO LIST-FORMATS:', ytdlpPath, checkArgs.join(' '));
       
       const checkProcess = spawn(ytdlpPath, checkArgs, getYtdlpSpawnOptions());
-      let detectedHeight = '';
+      let formatsOutput = '';
       let stderrOutput = '';
       
       checkProcess.stdout.on('data', (data) => {
-        detectedHeight += data.toString();
-        console.log('📏 yt-dlp retornou (chunk):', JSON.stringify(data.toString()));
+        formatsOutput += data.toString();
       });
       
       checkProcess.stderr.on('data', (data) => {
         stderrOutput += data.toString();
-        console.log('😱 yt-dlp stderr:', data.toString());
+        console.log('😱 list-formats stderr:', data.toString());
       });
       
       checkProcess.on('close', async (code) => {
-        console.log('📏 Código de saída:', code);
-        console.log('📏 Saída completa do yt-dlp:', JSON.stringify(detectedHeight));
+        console.log('📏 List-formats código de saída:', code);
         console.log('😱 Stderr completo:', stderrOutput);
         
-        if (code === 0 && detectedHeight) {
-          const lines = detectedHeight.trim().split('\n').filter(l => l.trim());
-          console.log('📏 Linhas filtradas:', lines);
-          const actualHeight = parseInt(lines[lines.length - 1]);
-          console.log('📏 Altura detectada:', actualHeight, 'Altura solicitada:', requestedHeight);
+        if (code === 0 && formatsOutput) {
+          // Parser das linhas de formato para encontrar a maior resolução
+          const lines = formatsOutput.split('\n');
+          console.log('📄 Total de linhas do list-formats:', lines.length);
+          
+          let maxHeight = 0;
+          const resolutions = [];
+          
+          for (const line of lines) {
+            // Buscar padrões como "1920x1080", "1280x720" etc
+            const resMatch = line.match(/(\d+)x(\d+)/);
+            if (resMatch) {
+              const height = parseInt(resMatch[2]);
+              if (height > maxHeight) {
+                maxHeight = height;
+              }
+              resolutions.push(height);
+              console.log('📐 Resolução encontrada na linha:', height, '|', line.substring(0, 80));
+            }
+          }
+          
+          console.log('📊 Resoluções encontradas:', resolutions.sort((a, b) => b - a));
+          console.log('📏 Altura máxima detectada:', maxHeight, 'Altura solicitada:', requestedHeight);
           
           if (actualHeight < requestedHeight) {
             const resNames = {
@@ -1653,6 +1667,162 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
       });
       
       checkProcess.on('error', () => checkResolve(true));
+          
+          if (maxHeight < requestedHeight) {
+            const resNames = {
+              2160: '4K (2160p)',
+              1440: '2K (1440p)',
+              1080: 'Full HD (1080p)',
+              720: 'HD (720p)',
+              480: 'SD (480p)',
+              360: '360p',
+              240: '240p'
+            };
+            
+            const requestedName = resNames[requestedHeight] || `${requestedHeight}p`;
+            const actualName = resNames[maxHeight] || `${maxHeight}p`;
+            
+            const warningWindow = new BrowserWindow({
+              width: 500,
+              height: 280,
+              resizable: false,
+              frame: false,
+              modal: true,
+              parent: mainWindowGlobal,
+              webPreferences: {
+                nodeIntegration: true,
+                contextIsolation: false
+              }
+            });
+
+            warningWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <meta charset=\"UTF-8\">
+                <style>
+                  * { margin: 0; padding: 0; box-sizing: border-box; }
+                  body {
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    height: 100vh;
+                    display: flex;
+                    flex-direction: column;
+                    overflow: hidden;
+                  }
+                  .header {
+                    background: rgba(0, 0, 0, 0.2);
+                    padding: 15px 20px;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                  }
+                  .header-icon {
+                    font-size: 20px;
+                  }
+                  .header-title {
+                    font-size: 16px;
+                    font-weight: 600;
+                  }
+                  .content {
+                    flex: 1;
+                    padding: 30px;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                  }
+                  .message {
+                    font-size: 15px;
+                    line-height: 1.6;
+                    text-align: center;
+                    margin-bottom: 25px;
+                  }
+                  .quality-info {
+                    background: rgba(255, 255, 255, 0.1);
+                    padding: 15px;
+                    border-radius: 8px;
+                    margin-bottom: 25px;
+                    text-align: center;
+                  }
+                  .buttons {
+                    display: flex;
+                    gap: 15px;
+                    justify-content: center;
+                  }
+                  .btn {
+                    padding: 10px 20px;
+                    border: none;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-size: 14px;
+                    font-weight: 500;
+                    transition: all 0.2s;
+                  }
+                  .btn-primary {
+                    background: rgba(255, 255, 255, 0.9);
+                    color: #333;
+                  }
+                  .btn-secondary {
+                    background: rgba(255, 255, 255, 0.2);
+                    color: white;
+                    border: 1px solid rgba(255, 255, 255, 0.3);
+                  }
+                  .btn:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+                  }
+                </style>
+              </head>
+              <body>
+                <div class=\"header\">
+                  <span class=\"header-icon\">⚠️</span>
+                  <span class=\"header-title\">Resolução não disponível</span>
+                </div>
+                <div class=\"content\">
+                  <div class=\"message\">
+                    A resolução solicitada não está disponível para este vídeo.
+                  </div>
+                  <div class=\"quality-info\">
+                    <strong>Solicitado:</strong> ${requestedName}<br>
+                    <strong>Disponível:</strong> ${actualName} (máximo)
+                  </div>
+                  <div class=\"buttons\">
+                    <button class=\"btn btn-primary\" onclick=\"window.close(); require('electron').ipcRenderer.send('resolution-choice', true);\">
+                      Baixar na qualidade disponível
+                    </button>
+                    <button class=\"btn btn-secondary\" onclick=\"window.close(); require('electron').ipcRenderer.send('resolution-choice', false);\">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              </body>
+              </html>
+            `)}`);
+
+            let resolveChoice;
+            ipcMain.once('resolution-choice', (event, choice) => {
+              resolveChoice(choice);
+            });
+
+            warningWindow.on('closed', () => {
+              if (resolveChoice) resolveChoice(false);
+            });
+
+            await new Promise(resolve => {
+              resolveChoice = resolve;
+            });
+
+            checkResolve(false); // Não continuar com qualidade diferente
+          } else {
+            console.log('✅ Resolução disponível, continuando...');
+            checkResolve(true);
+          }
+        } else {
+          console.log('❌ Erro ao obter formatos ou nenhuma resolução encontrada');
+          checkResolve(true); // Em caso de erro, permitir o download
+        }
+      });
     });
     
     console.log('🎯 check-resolution resultado final:', shouldContinue);
@@ -2498,19 +2668,37 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
       args.push('--audio-quality', '0');
     } else {
       let formatString;
-      console.log('🎬 CONFIGURANDO FORMATO DE DOWNLOAD:', { resolution, allowLowerQuality, type });
+      console.log('🎬 CONFIGURANDO FORMATO DE DOWNLOAD (NOVA LÓGICA SEM best/bestvideo):', { resolution, allowLowerQuality, type, format });
+      
       if (resolution && resolution !== 'best') {
+        const height = parseInt(resolution);
+        
+        // Estratégia baseada na resolução e formato desejado
         if (allowLowerQuality) {
-          formatString = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]/bestvideo+bestaudio/best`;
-          console.log('📺 Usando formato com fallback (allowLowerQuality=true):', formatString);
+          // Com fallback: tenta a resolução desejada, depois menores
+          if (height >= 2160) {
+            formatString = `${format}[height>=2160]/mp4[height>=2160]/${format}[height>=1440]/mp4[height>=1440]/${format}[height>=1080]/mp4[height>=1080]/${format}[height>=720]/mp4[height>=720]/${format}/mp4`;
+          } else if (height >= 1440) {
+            formatString = `${format}[height>=1440]/mp4[height>=1440]/${format}[height>=1080]/mp4[height>=1080]/${format}[height>=720]/mp4[height>=720]/${format}/mp4`;
+          } else if (height >= 1080) {
+            formatString = `${format}[height>=1080]/mp4[height>=1080]/${format}[height>=720]/mp4[height>=720]/${format}/mp4`;
+          } else if (height >= 720) {
+            formatString = `${format}[height>=720]/mp4[height>=720]/${format}/mp4`;
+          } else {
+            formatString = `${format}/mp4`;
+          }
+          console.log('📺 Usando formato com fallback progressivo:', formatString);
         } else {
-          formatString = `bestvideo[height<=${resolution}]+bestaudio`;
-          console.log('📺 Usando formato estrito (allowLowerQuality=false):', formatString);
+          // Sem fallback: apenas a resolução exata ou superior no formato desejado
+          formatString = `${format}[height>=${height}]/mp4[height>=${height}]`;
+          console.log('📺 Usando formato estrito (exact ou superior):', formatString);
         }
       } else {
-        formatString = 'bestvideo+bestaudio/best';
-        console.log('📺 Usando formato best (resolution=best ou undefined):', formatString);
+        // Para resolution='best', usar o melhor do formato escolhido
+        formatString = `${format}/mp4`;
+        console.log('📺 Usando melhor formato disponível:', formatString);
       }
+      
       args.push('-f', formatString);
       args.push('--merge-output-format', format);
     }
@@ -2724,21 +2912,33 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
       args.push('--audio-format', format);
       args.push('--audio-quality', '0'); // Melhor qualidade
     } else {
-      // Download de vídeo
+      // Download de vídeo (NOVA LÓGICA SEM best/bestvideo)
       let formatString;
       if (resolution && resolution !== 'best') {
-        // Sempre com fallback mínimo para não falhar completamente
-        // A verificação de altura ANTES do download cuida de avisar o usuário
+        const height = parseInt(resolution);
+        
+        console.log('🎬 Configurando formato playlist/individual:', { resolution, allowLowerQuality, format });
+        
         if (allowLowerQuality) {
           // Com fallback completo
-          formatString = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]/bestvideo+bestaudio/best`;
+          if (height >= 2160) {
+            formatString = `${format}[height>=2160]/mp4[height>=2160]/${format}[height>=1440]/mp4[height>=1440]/${format}[height>=1080]/mp4[height>=1080]/${format}[height>=720]/mp4[height>=720]/${format}/mp4`;
+          } else if (height >= 1440) {
+            formatString = `${format}[height>=1440]/mp4[height>=1440]/${format}[height>=1080]/mp4[height>=1080]/${format}[height>=720]/mp4[height>=720]/${format}/mp4`;
+          } else if (height >= 1080) {
+            formatString = `${format}[height>=1080]/mp4[height>=1080]/${format}[height>=720]/mp4[height>=720]/${format}/mp4`;
+          } else if (height >= 720) {
+            formatString = `${format}[height>=720]/mp4[height>=720]/${format}/mp4`;
+          } else {
+            formatString = `${format}/mp4`;
+          }
         } else {
-          // Com fallback mínimo (bestvideo+bestaudio) para não falhar
-          formatString = `bestvideo[height<=${resolution}]+bestaudio/bestvideo+bestaudio/best`;
+          // Sem fallback: formato exato
+          formatString = `${format}[height>=${height}]/mp4[height>=${height}]`;
         }
       } else {
-        // Melhor qualidade disponível
-        formatString = 'bestvideo+bestaudio/best';
+        // Melhor qualidade disponível no formato especificado
+        formatString = `${format}/mp4`;
       }
       args.push('-f', formatString);
       args.push('--merge-output-format', format);
