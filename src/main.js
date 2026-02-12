@@ -2696,13 +2696,14 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
       // Download de vídeo
       let formatString;
       if (resolution && resolution !== 'best') {
-        // Respeitar allowLowerQuality
+        // Sempre com fallback mínimo para não falhar completamente
+        // A verificação de altura ANTES do download cuida de avisar o usuário
         if (allowLowerQuality) {
-          // Com fallback
+          // Com fallback completo
           formatString = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]/bestvideo+bestaudio/best`;
         } else {
-          // Sem fallback - formato estrito
-          formatString = `bestvideo[height<=${resolution}]+bestaudio`;
+          // Com fallback mínimo (bestvideo+bestaudio) para não falhar
+          formatString = `bestvideo[height<=${resolution}]+bestaudio/bestvideo+bestaudio/best`;
         }
       } else {
         // Melhor qualidade disponível
