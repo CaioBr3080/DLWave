@@ -1465,17 +1465,28 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
         url
       );
       
+      console.log('🚨 COMANDO COMPLETO:', ytdlpPath, checkArgs.join(' '));
+      
       const checkProcess = spawn(ytdlpPath, checkArgs, getYtdlpSpawnOptions());
       let detectedHeight = '';
+      let stderrOutput = '';
       
       checkProcess.stdout.on('data', (data) => {
         detectedHeight += data.toString();
-        console.log('📏 yt-dlp retornou (chunk):', data.toString());
+        console.log('📏 yt-dlp retornou (chunk):', JSON.stringify(data.toString()));
+      });
+      
+      checkProcess.stderr.on('data', (data) => {
+        stderrOutput += data.toString();
+        console.log('😱 yt-dlp stderr:', data.toString());
       });
       
       checkProcess.on('close', async (code) => {
+        console.log('📏 Código de saída:', code);
+        console.log('📏 Saída completa do yt-dlp:', JSON.stringify(detectedHeight));
+        console.log('😱 Stderr completo:', stderrOutput);
+        
         if (code === 0 && detectedHeight) {
-          console.log('📏 Saída completa do yt-dlp:', detectedHeight);
           const lines = detectedHeight.trim().split('\n').filter(l => l.trim());
           console.log('📏 Linhas filtradas:', lines);
           const actualHeight = parseInt(lines[lines.length - 1]);
