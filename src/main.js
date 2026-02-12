@@ -2081,6 +2081,8 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
     const ytdlp = spawn(ytdlpPath, args, getYtdlpSpawnOptions());
     downloadProcesses.set(tabId, ytdlp); // Armazenar para permitir cancelamento
     
+    let stderrBuffer = ''; // Buffer para acumular erros
+    
     ytdlp.stdout.on('data', (data) => {
       // Verificar se foi cancelado durante download
       if (downloadCancelledFlags.get(tabId)) {
@@ -2097,6 +2099,7 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
     
     ytdlp.stderr.on('data', (data) => {
       const error = data.toString();
+      stderrBuffer += error; // Acumular erros
       
       // Verificar se é erro de autenticação
       const authErrors = [
@@ -2161,7 +2164,13 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
       if (code === 0) {
         resolve({ sucesso: true });
       } else {
-        reject(new Error(`yt-dlp código ${code}`));
+        // Mostrar mensagem de erro completa
+        const errorMsg = `❌ yt-dlp encerrou com código ${code}\n\n📋 DETALHES DO ERRO:\n${stderrBuffer || 'Nenhum erro detalhado disponível'}`;
+        console.error(errorMsg);
+        if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+          mainWindowGlobal.webContents.send('log', tabId, errorMsg);
+        }
+        reject(new Error(`yt-dlp encerrou com código ${code}`));
       }
     });
     
@@ -2287,6 +2296,8 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
     const ytdlp = spawn(ytdlpPath, args, getYtdlpSpawnOptions());
     downloadProcesses.set(tabId, ytdlp); // Armazenar referência para cancelamento
     
+    let stderrBuffer = ''; // Buffer para acumular erros
+    
     // Capturar saída
     ytdlp.stdout.on('data', (data) => {
       // Verificar se foi cancelado durante download
@@ -2311,6 +2322,7 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
     
     ytdlp.stderr.on('data', (data) => {
       const error = data.toString();
+      stderrBuffer += error; // Acumular erros
       
       // Verificar se é erro de arquivo em uso
       const fileInUseErrors = [
@@ -2413,6 +2425,12 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
       if (code === 0) {
         resolve({ sucesso: true, mensagem: 'Download concluído com sucesso!' });
       } else {
+        // Mostrar mensagem de erro completa
+        const errorMsg = `❌ yt-dlp encerrou com código ${code}\n\n📋 DETALHES DO ERRO:\n${stderrBuffer || 'Nenhum erro detalhado disponível'}`;
+        console.error(errorMsg);
+        if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+          mainWindowGlobal.webContents.send('log', tabId, errorMsg);
+        }
         reject(new Error(`yt-dlp encerrou com código ${code}`));
       }
     });
