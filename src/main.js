@@ -1475,7 +1475,8 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
       
       checkProcess.on('close', async (code) => {
         if (code === 0 && detectedHeight) {
-          const actualHeight = parseInt(detectedHeight.trim().split('\n')[0]);
+          const lines = detectedHeight.trim().split('\n').filter(l => l.trim());
+          const actualHeight = parseInt(lines[lines.length - 1]);
           
           if (actualHeight < requestedHeight) {
             const resNames = {
@@ -2060,7 +2061,8 @@ ipcMain.handle("start-download", async (event, dados) => {
             }
           }
           
-          const actualHeight = parseInt(checkBestAvailable.height.split('\n')[0]);
+          const lines = checkBestAvailable.height.split('\n').filter(l => l.trim());
+          const actualHeight = parseInt(lines[lines.length - 1]);
           
           if (actualHeight < requestedHeight) {
             // Resolução inferior disponível - perguntar ao usuário
