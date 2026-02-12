@@ -1470,12 +1470,12 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
       let detectedHeight = '';
       
       checkProcess.stdout.on('data', (data) => {
-        detectedHeight += data.toString().trim();
+        detectedHeight += data.toString();
       });
       
       checkProcess.on('close', async (code) => {
         if (code === 0 && detectedHeight) {
-          const actualHeight = parseInt(detectedHeight.split('\n')[0]);
+          const actualHeight = parseInt(detectedHeight.trim().split('\n')[0]);
           
           if (actualHeight < requestedHeight) {
             const resNames = {
