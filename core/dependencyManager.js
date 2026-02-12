@@ -34,18 +34,50 @@ async function isWingetAvailable() {
 }
 
 /**
- * Verifica se yt-dlp está instalado globalmente
+ * Verifica se yt-dlp está instalado globalmente via winget
  */
 async function isYtdlpGlobal() {
   try {
-    const { stdout } = await execAsync('where yt-dlp');
-    const found = stdout.trim().length > 0;
-    if (found) {
-      console.log('✅ yt-dlp encontrado no PATH:', stdout.trim().split('\n')[0]);
+    // Primeiro: verificar no WinGet Links (local padrão)
+    const wingetLinksPath = path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Links', 'yt-dlp.exe');
+    if (fs.existsSync(wingetLinksPath)) {
+      console.log('✅ yt-dlp encontrado via WinGet Links:', wingetLinksPath);
+      return true;
     }
-    return found;
+    
+    // Segundo: verificar na pasta Packages do WinGet
+    const packagesPath = path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Packages');
+    if (fs.existsSync(packagesPath)) {
+      const ytdlpDirs = fs.readdirSync(packagesPath).filter(dir => dir.startsWith('yt-dlp.yt-dlp'));
+      for (const dir of ytdlpDirs) {
+        const ytdlpExePath = path.join(packagesPath, dir, 'yt-dlp.exe');
+        if (fs.existsSync(ytdlpExePath)) {
+          console.log('✅ yt-dlp encontrado via WinGet Packages:', ytdlpExePath);
+          return true;
+        }
+      }
+    }
+    
+    // Terceiro: usar where mas validar que é .exe (não script Python)
+    try {
+      const { stdout } = await execAsync('where yt-dlp');
+      const paths = stdout.trim().split('\n');
+      for (const p of paths) {
+        const cleanPath = p.trim();
+        // Aceitar apenas .exe, rejeitar scripts Python (.py, sem extensão no PATH do Python)
+        if (cleanPath.toLowerCase().endsWith('.exe') && fs.existsSync(cleanPath)) {
+          console.log('✅ yt-dlp.exe encontrado no PATH:', cleanPath);
+          return true;
+        }
+      }
+    } catch (error) {
+      // where falhou, continuar
+    }
+    
+    console.log('❌ yt-dlp NÃO encontrado (winget ou .exe válido)');
+    return false;
   } catch (error) {
-    console.log('❌ yt-dlp NÃO encontrado no PATH');
+    console.log('❌ Erro ao verificar yt-dlp:', error.message);
     return false;
   }
 }

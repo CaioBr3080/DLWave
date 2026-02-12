@@ -2360,31 +2360,55 @@ ipcMain.handle("start-download", async (event, dados) => {
 
 // Função auxiliar para detectar e retornar o caminho do yt-dlp (global ou local)
 function getYtdlpPath() {
-  // Verificar se yt-dlp está instalado globalmente
   return new Promise((resolve) => {
+    // Primeiro: verificar WinGet Links
+    const wingetLinksPath = path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Links', 'yt-dlp.exe');
+    if (fs.existsSync(wingetLinksPath)) {
+      console.log(`🌐 yt-dlp via WinGet Links: ${wingetLinksPath}`);
+      resolve(wingetLinksPath);
+      return;
+    }
+    
+    // Segundo: verificar WinGet Packages
+    const packagesPath = path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Packages');
+    if (fs.existsSync(packagesPath)) {
+      try {
+        const ytdlpDirs = fs.readdirSync(packagesPath).filter(dir => dir.startsWith('yt-dlp.yt-dlp'));
+        for (const dir of ytdlpDirs) {
+          const ytdlpExePath = path.join(packagesPath, dir, 'yt-dlp.exe');
+          if (fs.existsSync(ytdlpExePath)) {
+            console.log(`🌐 yt-dlp via WinGet Packages: ${ytdlpExePath}`);
+            resolve(ytdlpExePath);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('⚠️ Erro ao verificar WinGet Packages:', err.message);
+      }
+    }
+    
+    // Terceiro: usar where mas validar que é .exe
     exec('where yt-dlp', (error, stdout) => {
       if (!error && stdout.trim()) {
         const paths = stdout.trim().split('\n');
         
-        // Tentar encontrar um .exe válido nos caminhos retornados
+        // Procurar por .exe válido (não script Python)
         for (const p of paths) {
           const cleanPath = p.trim();
-          if (fs.existsSync(cleanPath)) {
-            console.log(`🌐 yt-dlp GLOBAL encontrado e validado: ${cleanPath}`);
+          if (cleanPath.toLowerCase().endsWith('.exe') && fs.existsSync(cleanPath)) {
+            console.log(`🌐 yt-dlp.exe encontrado no PATH: ${cleanPath}`);
             resolve(cleanPath);
             return;
           }
         }
         
-        // Se where encontrou mas nenhum arquivo existe, tentar apenas 'yt-dlp' (deixar o sistema resolver)
-        console.log(`⚠️ where encontrou yt-dlp mas arquivos não existem. Usando 'yt-dlp' genérico.`);
-        resolve('yt-dlp'); // Sem caminho, deixa o sistema resolver via PATH
-      } else {
-        // Usar o local
-        const localPath = path.join(binPath, 'yt-dlp.exe');
-        console.log(`📦 Usando yt-dlp LOCAL: ${localPath}`);
-        resolve(localPath);
+        console.log(`⚠️ where encontrou yt-dlp mas nenhum .exe válido. Usando local.`);
       }
+      
+      // Fallback: usar o local
+      const localPath = path.join(binPath, 'yt-dlp.exe');
+      console.log(`📦 Usando yt-dlp LOCAL: ${localPath}`);
+      resolve(localPath);
     });
   });
 }
