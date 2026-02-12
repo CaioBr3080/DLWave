@@ -917,9 +917,13 @@ class TabManager {
         
         // Download único
         console.log('📦 Enviando para download:', {
+          tabId,
           url: state.url.substring(0, 50),
+          type: state.type,
+          format: state.format,
           resolution: state.resolution,
-          allowLowerQuality: state.allowLowerQuality
+          allowLowerQuality: state.allowLowerQuality,
+          ignorePlaylist: state.ignorePlaylist
         });
         await window.api.startDownload(tabId, {
           url: state.url,

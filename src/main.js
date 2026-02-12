@@ -1667,6 +1667,16 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
 ipcMain.handle("start-download", async (event, dados) => {
   const { tabId, url, type, format, resolution, downloadPath, playlistFolderName, allowLowerQuality, playlistItems, ignorePlaylist, cookiesFilePath } = dados;
   
+  console.log('🚀 START-DOWNLOAD DADOS RECEBIDOS:', {
+    tabId, 
+    url: url?.substring(0, 50),
+    type, 
+    format, 
+    resolution, 
+    allowLowerQuality,
+    ignorePlaylist
+  });
+  
   // Reset flag de cancelamento no início do download
   downloadCancelledFlags.set(tabId, false);
   
@@ -2560,7 +2570,9 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
     args.push('--newline');
     args.push(videoUrl);
     
-    console.log('🚀 Iniciando download com argumentos:', args.join(' '));
+    console.log('🚀 Iniciando download com argumentos completos:');
+    console.log('📋 Args array:', args);
+    console.log('🎯 Comando final será:', ytdlpPath, args.join(' '));
     
     const ytdlp = spawn(ytdlpPath, args, spawnOptions);
     downloadProcesses.set(tabId, ytdlp); // Armazenar para permitir cancelamento
