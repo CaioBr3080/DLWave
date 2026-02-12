@@ -94,16 +94,32 @@ async function installYtdlpViaWinget(onProgress) {
   });
 }
 
+/**
+ * Verificação rápida e síncrona apenas do ffmpeg local
+ */
 function depsOk() {
   // Verificar se ffmpeg local existe (sempre necessário local)
   const ffmpegLocal = fs.existsSync(path.join(binPath, "ffmpeg.exe"));
-  
-  // yt-dlp pode estar global ou local
-  // A função getYtdlpPath() em main.js vai decidir qual usar
-  const ytdlpLocal = fs.existsSync(path.join(binPath, "yt-dlp.exe"));
-  
-  // Se ffmpeg existe, considerar OK (yt-dlp pode estar global)
   return ffmpegLocal;
+}
+
+/**
+ * Verificação completa e assíncrona de todas as dependências
+ * Retorna objeto com status detalhado
+ */
+async function verificarDependencias() {
+  const ffmpegLocal = fs.existsSync(path.join(binPath, "ffmpeg.exe"));
+  const ytdlpLocal = fs.existsSync(path.join(binPath, "yt-dlp.exe"));
+  const ytdlpGlobal = await isYtdlpGlobal();
+  const ytdlpOk = ytdlpLocal || ytdlpGlobal;
+  
+  return {
+    ffmpeg: ffmpegLocal,
+    ytdlp: ytdlpOk,
+    ytdlpGlobal,
+    ytdlpLocal,
+    todasOk: ffmpegLocal && ytdlpOk
+  };
 }
 
 /**
@@ -161,58 +177,77 @@ async function instalarDeps(onProgress) {
     fs.mkdirSync(binPath, { recursive: true });
   }
 
-  const ytdlpPath = path.join(binPath, "yt-dlp.exe");
   const ffmpegPath = path.join(binPath, "ffmpeg.exe");
   const ffmpegZipPath = path.join(binPath, 'ffmpeg.zip');
 
   try {
-    let ytdlpMethod = 'local';
+    let ytdlpMethod = 'none';
     
-    // Verificar se winget está disponível
-    const hasWinget = await isWingetAvailable();
+    // Verificar se yt-dlp já está instalado globalmente
+    const ytdlpAlreadyInstalled = await isYtdlpGlobal();
     
-    if (hasWinget) {
+    if (ytdlpAlreadyInstalled) {
       onProgress?.({ 
-        etapa: '🔍 winget detectado! Instalando yt-dlp globalmente...',
-        info: 'O yt-dlp será instalado via Windows Package Manager e adicionado ao PATH do sistema automaticamente.'
+        etapa: '✅ yt-dlp já instalado no sistema!',
+        info: 'Detectado yt-dlp no PATH. Pulando instalação.',
+        percent: 20
       });
-      
-      try {
-        await installYtdlpViaWinget(onProgress);
-        ytdlpMethod = 'winget';
-        
-        onProgress?.({ 
-          etapa: '✅ yt-dlp instalado globalmente!',
-          info: 'Localização: Gerenciado pelo winget (acessível de qualquer lugar)',
-          percent: 40
-        });
-      } catch (error) {
-        console.warn('Falha ao instalar via winget, usando download direto:', error);
-        onProgress?.({ 
-          etapa: '⚠️ winget falhou, usando método alternativo...',
-          info: 'Baixando yt-dlp.exe diretamente'
-        });
-        
-        // Fallback: baixar yt-dlp.exe
-        onProgress?.({ etapa: 'Baixando yt-dlp...' });
-        await downloadFile(
-          'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe',
-          ytdlpPath,
-          (prog) => onProgress?.({ etapa: 'yt-dlp', ...prog })
-        );
-        ytdlpMethod = 'local';
-      }
+      ytdlpMethod = 'existing';
     } else {
-      // Sem winget, baixar diretamente
-      onProgress?.({ 
-        etapa: 'Baixando yt-dlp...',
-        info: 'winget não disponível. Baixando executável portátil.'
-      });
-      await downloadFile(
-        'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe',
-        ytdlpPath,
-        (prog) => onProgress?.({ etapa: 'yt-dlp', ...prog })
-      );
+      // Verificar se winget está disponível
+      const hasWinget = await isWingetAvailable();
+      
+      if (hasWinget) {
+        onProgress?.({ 
+          etapa: '🔍 winget detectado! Instalando yt-dlp globalmente...',
+          info: 'O yt-dlp será instalado via Windows Package Manager e adicionado ao PATH do sistema automaticamente.'
+        });
+        
+        try {
+          await installYtdlpViaWinget(onProgress);
+          ytdlpMethod = 'winget';
+          
+          onProgress?.({ 
+            etapa: '✅ yt-dlp instalado globalmente!',
+            info: 'Localização: Gerenciado pelo winget (acessível de qualquer lugar)',
+            percent: 40
+          });
+        } catch (error) {
+          console.error('Falha ao instalar via winget:', error);
+          
+          // Não há fallback - retornar erro
+          return { 
+            sucesso: false, 
+            erro: 'Falha ao instalar yt-dlp via winget',
+            detalhes: error.message,
+            instrucoes: 'Por favor, instale o yt-dlp manualmente usando um dos métodos:\n\n' +
+                       '1. Via winget: winget install yt-dlp.yt-dlp\n' +
+                       '2. Via pip: pip install yt-dlp\n' +
+                       '3. Via scoop: scoop install yt-dlp\n\n' +
+                       'Depois de instalar, reinicie o aplicativo.'
+          };
+        }
+      } else {
+        // Sem winget e sem yt-dlp global - não pode continuar
+        console.warn('winget não disponível e yt-dlp não encontrado no PATH');
+        
+        return { 
+          sucesso: false, 
+          erro: 'Requisitos não atendidos',
+          instrucoes: '❌ ERRO: winget não encontrado e yt-dlp não está instalado.\n\n' +
+                     '📌 SOLUÇÕES:\n\n' +
+                     '1️⃣ INSTALAR WINGET (Recomendado):\n' +
+                     '   • Windows 11: Já vem instalado\n' +
+                     '   • Windows 10: Baixe em https://aka.ms/getwinget\n' +
+                     '   Depois execute o DLWave novamente.\n\n' +
+                     '2️⃣ INSTALAR YT-DLP MANUALMENTE:\n' +
+                     '   Escolha um método:\n' +
+                     '   • Via pip: pip install yt-dlp\n' +
+                     '   • Via scoop: scoop install yt-dlp\n' +
+                     '   • Via chocolatey: choco install yt-dlp\n\n' +
+                     'ℹ️ O yt-dlp precisa estar no PATH do sistema para funcionar corretamente.'
+        };
+      }
     }
 
     // Baixar ffmpeg (sempre local para ter ffmpeg-location)
@@ -249,8 +284,8 @@ async function instalarDeps(onProgress) {
     let mensagemFinal = 'Concluído!';
     if (ytdlpMethod === 'winget') {
       mensagemFinal = '✅ Instalação concluída!\n\nyt-dlp: Instalado globalmente via winget (no PATH do sistema)\nffmpeg: Instalado localmente';
-    } else {
-      mensagemFinal = '✅ Instalação concluída!\n\nyt-dlp: Instalado localmente\nffmpeg: Instalado localmente';
+    } else if (ytdlpMethod === 'existing') {
+      mensagemFinal = '✅ Instalação concluída!\n\nyt-dlp: Já instalado no sistema (detectado no PATH)\nffmpeg: Instalado localmente';
     }
     
     onProgress?.({ 
@@ -269,4 +304,4 @@ async function instalarDeps(onProgress) {
   }
 }
 
-export { depsOk, binPath, instalarDeps, setBinPath, isWingetAvailable, isYtdlpGlobal };
+export { depsOk, binPath, instalarDeps, setBinPath, isWingetAvailable, isYtdlpGlobal, verificarDependencias };

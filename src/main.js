@@ -3,7 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { spawn, exec } from 'child_process';
 import started from 'electron-squirrel-startup';
-import { depsOk, instalarDeps, setBinPath, binPath } from '../core/dependencyManager.js';
+import { depsOk, instalarDeps, setBinPath, binPath, verificarDependencias } from '../core/dependencyManager.js';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -65,7 +65,9 @@ app.whenReady().then(() => {
 
 // Função para verificar e instalar dependências automaticamente
 async function verificarEInstalarDeps() {
-  if (!depsOk()) {
+  const deps = await verificarDependencias();
+  if (!deps.todasOk) {
+    console.log('Dependências faltando:', { ffmpeg: deps.ffmpeg, ytdlp: deps.ytdlp });
     await instalarDepsComUI();
   }
 }
@@ -399,14 +401,16 @@ async function instalarDepsComUI() {
       </div>
       <div class="message">
         <strong>yt-dlp</strong> e <strong>ffmpeg</strong> são necessários para o funcionamento do DLWave.<br><br>
-        Deseja baixar e instalar agora? (~110 MB)
+        <strong>yt-dlp:</strong> Será instalado globalmente via Windows Package Manager (winget)<br>
+        <strong>ffmpeg:</strong> Será baixado localmente (~110 MB)<br><br>
+        Deseja instalar agora?
         <div class="warning">
           ! O app não funcionará sem essas dependências
         </div>
       </div>
       <div class="buttons">
         <button class="btn-no" onclick="respond(false)">Não</button>
-        <button class="btn-yes" onclick="respond(true)">Sim, baixar agora</button>
+        <button class="btn-yes" onclick="respond(true)">Sim, instalar agora</button>
       </div>
       
       <script>
@@ -620,6 +624,138 @@ async function instalarDepsComUI() {
       setTimeout(() => {
         if (!progressWindow.isDestroyed()) progressWindow.close();
       }, 1500);
+    }
+    
+    // Se falhou com instruções, mostrar janela de erro detalhada
+    if (!resultado.sucesso && resultado.instrucoes) {
+      const errorWindow = new BrowserWindow({
+        width: 650,
+        height: 550,
+        modal: true,
+        parent: mainWindowGlobal,
+        resizable: false,
+        frame: false,
+        webPreferences: {
+          nodeIntegration: true,
+          contextIsolation: false
+        }
+      });
+
+      errorWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              background: linear-gradient(135deg, #1e1e1e 0%, #2d2d2d 100%);
+              color: #fff;
+              display: flex;
+              flex-direction: column;
+              height: 100vh;
+              overflow: hidden;
+            }
+            .header {
+              padding: 20px 30px;
+              border-bottom: 1px solid #3a3a3a;
+              -webkit-app-region: drag;
+              display: flex;
+              align-items: center;
+              gap: 15px;
+            }
+            .icon-error {
+              font-size: 32px;
+            }
+            .title-area h2 {
+              font-size: 20px;
+              margin-bottom: 5px;
+              color: #ff6b6b;
+            }
+            .title-area p {
+              font-size: 13px;
+              color: #888;
+            }
+            .content {
+              flex: 1;
+              padding: 25px 35px;
+              overflow-y: auto;
+            }
+            .error-message {
+              background: #2a2a2a;
+              border-left: 4px solid #ff6b6b;
+              padding: 20px;
+              border-radius: 8px;
+              margin-bottom: 20px;
+              line-height: 1.8;
+              white-space: pre-wrap;
+              font-size: 14px;
+              font-family: 'Segoe UI', system-ui, sans-serif;
+            }
+            .error-message strong {
+              color: #ff9999;
+              display: block;
+              margin-bottom: 15px;
+              font-size: 16px;
+            }
+            .buttons {
+              display: flex;
+              gap: 12px;
+              padding: 20px 35px;
+              border-top: 1px solid #3a3a3a;
+              background: #252525;
+            }
+            button {
+              flex: 1;
+              padding: 14px;
+              border: none;
+              border-radius: 8px;
+              font-size: 14px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.2s;
+            }
+            .btn-close {
+              background: linear-gradient(90deg, #dc3545, #c82333);
+              color: white;
+            }
+            .btn-close:hover {
+              transform: translateY(-2px);
+              box-shadow: 0 6px 20px rgba(220, 53, 69, 0.4);
+            }
+            ::-webkit-scrollbar {
+              width: 8px;
+            }
+            ::-webkit-scrollbar-track {
+              background: #1e1e1e;
+            }
+            ::-webkit-scrollbar-thumb {
+              background: #444;
+              border-radius: 4px;
+            }
+            ::-webkit-scrollbar-thumb:hover {
+              background: #555;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="icon-error">⚠️</div>
+            <div class="title-area">
+              <h2>Requisitos Não Atendidos</h2>
+              <p>Dependências obrigatórias não encontradas</p>
+            </div>
+          </div>
+          <div class="content">
+            <div class="error-message">${resultado.instrucoes.replace(/\n/g, '<br>')}</div>
+          </div>
+          <div class="buttons">
+            <button class="btn-close" onclick="window.close()">Fechar</button>
+          </div>
+        </body>
+        </html>
+      `)}`);
     }
     
     return resultado;
@@ -1313,13 +1449,14 @@ ipcMain.handle("start-download", async (event, dados) => {
   downloadCancelledFlags.set(tabId, false);
   
   // Verificar se dependências estão instaladas ANTES de tudo
-  const ytdlpPath = path.join(binPath, 'yt-dlp.exe');
+  const deps = await verificarDependencias();
+  const ytdlpPath = await getYtdlpPath();
   const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
   
-  if (!fs.existsSync(ytdlpPath) || !fs.existsSync(ffmpegPath)) {
+  if (!deps.todasOk) {
     const errorMsg = `❌ ERRO: Dependências não instaladas!\n` +
-                    `   yt-dlp: ${fs.existsSync(ytdlpPath) ? '✅' : '❌'}\n` +
-                    `   ffmpeg: ${fs.existsSync(ffmpegPath) ? '✅' : '❌'}\n` +
+                    `   yt-dlp: ${deps.ytdlp ? '✅' : '❌'} ${deps.ytdlpGlobal ? '(Global)' : deps.ytdlpLocal ? '(Local)' : '(Não encontrado)'}\n` +
+                    `   ffmpeg: ${deps.ffmpeg ? '✅' : '❌'}\n` +
                     `\n📌 SOLUÇÃO: Abra as Configurações e clique em "Reinstalar Dependências"`;
     
     if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
@@ -1329,7 +1466,7 @@ ipcMain.handle("start-download", async (event, dados) => {
   }
   
   console.log(`✅ Verificação de dependências OK`);
-  console.log(`   yt-dlp: ${ytdlpPath}`);
+  console.log(`   yt-dlp: ${ytdlpPath} ${deps.ytdlpGlobal ? '(Global)' : '(Local)'}`);
   console.log(`   ffmpeg: ${ffmpegPath}`);
   
   try {
@@ -2637,13 +2774,15 @@ ipcMain.handle("open-bin-folder", async () => {
 
 // Handler para verificar se dependências estão instaladas
 ipcMain.handle("check-dependencies", async () => {
-  return depsOk();
+  const deps = await verificarDependencias();
+  return deps.todasOk;
 });
 
 // Handler para forçar instalação de dependências
 ipcMain.handle("install-dependencies", async () => {
   await instalarDepsComUI();
-  return depsOk();
+  const deps = await verificarDependencias();
+  return deps.todasOk;
 });
 
 // Função para criar o tray icon - VERSÃO CORRIGIDA
