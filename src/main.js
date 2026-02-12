@@ -1416,10 +1416,15 @@ ipcMain.handle("get-playlist-info", async (event, url) => {
 
 // Handler para verificar Resolução (usado antes de downloads)
 ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQuality) => {
+  console.log('🔍 check-resolution chamado com:', { url, resolution, allowLowerQuality });
+  
   // Se allowLowerQuality estiver ativado ou for "best", não verificar
   if (allowLowerQuality || !resolution || resolution === 'best') {
+    console.log('❌ Pulando verificação:', { allowLowerQuality, resolution });
     return true;
   }
+  
+  console.log('✅ Iniciando verificação de resolução...');
   
   try {
     const ytdlpPath = await getYtdlpPath();
@@ -1650,8 +1655,10 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
       checkProcess.on('error', () => checkResolve(true));
     });
     
+    console.log('🎯 check-resolution resultado final:', shouldContinue);
     return shouldContinue;
   } catch (err) {
+    console.log('❌ check-resolution erro:', err.message);
     return true;
   }
 });
