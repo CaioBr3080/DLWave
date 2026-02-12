@@ -902,7 +902,7 @@ class TabManager {
         
         if (shouldCheckResolution) {
           this.logToTab(tabId, '🔍 Verificando disponibilidade da resolução escolhida...', 'info');
-          const resolutionOk = await window.api.checkResolution(state.url, state.resolution);
+          const resolutionOk = await window.api.checkResolution(state.url, state.resolution, state.allowLowerQuality);
           console.log('🔍 Resultado checkResolution:', resolutionOk);
           if (!resolutionOk) {
             this.logToTab(tabId, '❌ Download cancelado - resolução não disponível', 'error');
