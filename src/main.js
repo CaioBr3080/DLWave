@@ -1311,8 +1311,8 @@ ipcMain.handle("get-playlist-info", async (event, url) => {
     // Verificar se há browserPath configurado
     const useBrowserCookies = browserPath.trim() !== '';
     
-    // iOS client causa erro de PO Token quando tem cookies - usar apenas sem cookies
-    const playerClient = useBrowserCookies ? 'web,web_creator' : 'ios,web,web_creator';
+    // iOS client SEMPRE precisa PO Token (mudança do YouTube) - usar apenas web
+    const playerClient = 'web,web_creator';
     
     // Obter limite de playlist das preferências (padrão: 1000)
     const playlistLimit = prefs?.playlistLimit || 1000;
@@ -1448,8 +1448,8 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
         checkArgs.push('--cookies-from-browser', browser);
       }
       
-      // iOS client causa erro de PO Token quando tem cookies - usar apenas sem cookies
-      const playerClient = useBrowserCookies ? 'web,web_creator' : 'ios,web,web_creator';
+      // iOS client SEMPRE precisa PO Token (mudança do YouTube) - usar apenas web
+      const playerClient = 'web,web_creator';
       
       checkArgs.push(
         '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -1784,8 +1784,8 @@ ipcMain.handle("start-download", async (event, dados) => {
             checkArgs1.push('--cookies-from-browser', browser);
           }
           
-          // iOS client causa erro de PO Token quando tem cookies - usar apenas sem cookies
-          const playerClient = useBrowserCookies ? 'web,web_creator' : 'ios,web,web_creator';
+          // iOS client SEMPRE precisa PO Token (mudança do YouTube) - usar apenas web
+          const playerClient = 'web,web_creator';
           
           checkArgs1.push(
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -2501,8 +2501,8 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
       args.push('--cookies-from-browser', browser);
     }
     
-    // iOS client causa erro de PO Token quando tem cookies - usar apenas sem cookies
-    const playerClient = hasCookies ? 'web,web_creator' : 'ios,web,web_creator';
+    // iOS client SEMPRE precisa PO Token (mudança do YouTube) - usar apenas web
+    const playerClient = 'web,web_creator';
     
     args.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
@@ -2740,8 +2740,8 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
       args.push('--cookies-from-browser', browser);
     }
     
-    // iOS client causa erro de PO Token quando tem cookies - usar apenas sem cookies
-    const playerClient = hasCookies ? 'web,web_creator' : 'ios,web,web_creator';
+    // iOS client SEMPRE precisa PO Token (mudança do YouTube) - usar apenas web
+    const playerClient = 'web,web_creator';
     
     args.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
