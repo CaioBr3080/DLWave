@@ -1471,12 +1471,16 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
       
       checkProcess.stdout.on('data', (data) => {
         detectedHeight += data.toString();
+        console.log('📏 yt-dlp retornou (chunk):', data.toString());
       });
       
       checkProcess.on('close', async (code) => {
         if (code === 0 && detectedHeight) {
+          console.log('📏 Saída completa do yt-dlp:', detectedHeight);
           const lines = detectedHeight.trim().split('\n').filter(l => l.trim());
+          console.log('📏 Linhas filtradas:', lines);
           const actualHeight = parseInt(lines[lines.length - 1]);
+          console.log('📏 Altura detectada:', actualHeight, 'Altura solicitada:', requestedHeight);
           
           if (actualHeight < requestedHeight) {
             const resNames = {
