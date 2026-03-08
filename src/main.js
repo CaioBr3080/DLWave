@@ -31,6 +31,7 @@ let mainWindowGlobal = null;
 const downloadProcesses = new Map(); // Map<tabId, process>
 const downloadCancelledFlags = new Map(); // Map<tabId, boolean>
 let tray = null;
+let ytdlpUpdatePending = false; // Flag: yt-dlp precisa de atualização
 
 // Configurar binPath assim que o app estiver pronto
 app.whenReady().then(() => {
@@ -42,6 +43,11 @@ app.whenReady().then(() => {
   setBinPath(binDirectory);
   
   createWindow();
+
+  // Verificar silenciosamente se yt-dlp precisa de atualização
+  setTimeout(() => {
+    checkYtdlpUpdate();
+  }, 1000);
 
   // Verificar se é primeira execução e mostrar EULA
   setTimeout(async () => {
@@ -81,6 +87,197 @@ async function verificarEInstalarDeps() {
   } else {
     console.log('✅ Todas as dependências estão OK!');
   }
+}
+
+// Verificação silenciosa de atualização do yt-dlp
+function checkYtdlpUpdate() {
+  exec('yt-dlp --version', (err, stdout) => {
+    if (err) return;
+    const localVersion = stdout.trim();
+    console.log('📌 yt-dlp versão local:', localVersion);
+    
+    // Consultar versão mais recente via GitHub API
+    const https = require('https');
+    const options = {
+      hostname: 'api.github.com',
+      path: '/repos/yt-dlp/yt-dlp/releases/latest',
+      headers: { 'User-Agent': 'DLWave' }
+    };
+    
+    https.get(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const release = JSON.parse(data);
+          const latestVersion = release.tag_name;
+          console.log('📌 yt-dlp versão mais recente:', latestVersion);
+          
+          if (localVersion === latestVersion) {
+            console.log('✅ yt-dlp está atualizado');
+            ytdlpUpdatePending = false;
+          } else {
+            console.log('🆙 yt-dlp desatualizado, solicitando atualização...');
+            ytdlpUpdatePending = true;
+            showYtdlpUpdatePrompt();
+          }
+        } catch (parseErr) {
+          console.log('⚠️ Erro ao verificar versão do yt-dlp:', parseErr.message);
+        }
+      });
+    }).on('error', (reqErr) => {
+      console.log('⚠️ Sem internet para verificar atualização do yt-dlp:', reqErr.message);
+    });
+  });
+}
+
+// Popup pedindo permissão para atualizar o yt-dlp
+// Retorna Promise<boolean> - true se atualizou, false se recusou
+function showYtdlpUpdatePrompt() {
+  return new Promise((resolve) => {
+    if (!mainWindowGlobal || mainWindowGlobal.isDestroyed()) {
+      resolve(false);
+      return;
+    }
+  const updateWindow = new BrowserWindow({
+    width: 480,
+    height: 260,
+    resizable: false,
+    frame: false,
+    modal: true,
+    parent: mainWindowGlobal,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    }
+  });
+
+  updateWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          background: linear-gradient(135deg, #1e1e1e 0%, #2d2d2d 100%);
+          color: #fff;
+          display: flex;
+          flex-direction: column;
+          height: 100vh;
+          overflow: hidden;
+        }
+        .header {
+          padding: 18px 25px;
+          border-bottom: 1px solid #3a3a3a;
+          -webkit-app-region: drag;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .icon { font-size: 22px; }
+        h2 {
+          font-size: 16px;
+          font-weight: 600;
+          background: linear-gradient(90deg, #0078d4, #00d4ff);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+        .content {
+          flex: 1;
+          padding: 25px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+        }
+        .message {
+          font-size: 14px;
+          color: #e0e0e0;
+          line-height: 1.6;
+          margin-bottom: 25px;
+        }
+        .highlight { color: #00d4ff; font-weight: 600; }
+        .buttons {
+          display: flex;
+          gap: 12px;
+          justify-content: flex-end;
+        }
+        button {
+          padding: 10px 24px;
+          border: none;
+          border-radius: 6px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .btn-no { background: #3a3a3a; color: #e0e0e0; }
+        .btn-no:hover { background: #4a4a4a; }
+        .btn-yes {
+          background: linear-gradient(90deg, #0078d4, #0098ff);
+          color: white;
+        }
+        .btn-yes:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 15px rgba(0, 120, 212, 0.4);
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <span class="icon">🔄</span>
+        <h2>Atualização Disponível</h2>
+      </div>
+      <div class="content">
+        <div class="message">
+          O <span class="highlight">yt-dlp</span> está desatualizado. É necessário atualizar para garantir o funcionamento correto dos downloads.<br><br>
+          Deseja atualizar agora?
+        </div>
+        <div class="buttons">
+          <button class="btn-no" onclick="respond(false)">Depois</button>
+          <button class="btn-yes" onclick="respond(true)">Atualizar</button>
+        </div>
+      </div>
+      <script>
+        const { ipcRenderer } = require('electron');
+        function respond(accept) {
+          ipcRenderer.send('ytdlp-update-response', accept);
+        }
+      </script>
+    </body>
+    </html>
+  `)}`);
+
+  let resolved = false;
+  
+  ipcMain.once('ytdlp-update-response', (event, accepted) => {
+    if (resolved) return;
+    resolved = true;
+    updateWindow.close();
+    if (accepted) {
+      exec('yt-dlp -U', (err, stdout) => {
+        if (!err) {
+          console.log('🆙 yt-dlp atualizado com sucesso:', stdout.trim());
+          ytdlpUpdatePending = false;
+          resolve(true);
+        } else {
+          console.log('⚠️ Falha ao atualizar yt-dlp:', err.message);
+          resolve(false);
+        }
+      });
+    } else {
+      resolve(false);
+    }
+  });
+
+  updateWindow.on('closed', () => {
+    if (!resolved) {
+      resolved = true;
+      resolve(false);
+    }
+  });
+  });
 }
 
 // Função para verificar primeira execução e mostrar EULA
@@ -1311,9 +1508,6 @@ ipcMain.handle("get-playlist-info", async (event, url) => {
     // Verificar se há browserPath configurado
     const useBrowserCookies = browserPath.trim() !== '';
     
-    // iOS client SEMPRE precisa PO Token (mudança do YouTube) - usar apenas web
-    const playerClient = 'web,web_creator';
-    
     // Obter limite de playlist das preferências (padrão: 1000)
     const playlistLimit = prefs?.playlistLimit || 1000;
     
@@ -1326,12 +1520,10 @@ ipcMain.handle("get-playlist-info", async (event, url) => {
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--add-header', 'Accept-Encoding:gzip, deflate, br',
       '--add-header', 'Referer:https://www.youtube.com/',
-      '--extractor-args', `youtube:player_client=${playerClient};skip=translated_subs`,
       '--extractor-retries', '5',
       '--fragment-retries', '5',
       '--sleep-interval', '2',
-      '--max-sleep-interval', '5',
-      '--source-address', '0.0.0.0'
+      '--max-sleep-interval', '5'
     ];
     
     if (useBrowserCookies) {
@@ -1448,21 +1640,16 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
         checkArgs.push('--cookies-from-browser', browser);
       }
       
-      // iOS client SEMPRE precisa PO Token (mudança do YouTube) - usar apenas web
-      const playerClient = 'web,web_creator';
-      
       checkArgs.push(
         '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         '--add-header', 'Accept-Language:pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
         '--add-header', 'Accept-Encoding:gzip, deflate, br',
         '--add-header', 'Referer:https://www.youtube.com/',
-        '--extractor-args', `youtube:player_client=${playerClient};skip=translated_subs`,
         '--extractor-retries', '5',
         '--fragment-retries', '5',
         '--sleep-interval', '1',
         '--max-sleep-interval', '5',
-        '--source-address', '0.0.0.0',
         url
       );
       
@@ -1521,7 +1708,7 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
             };
             
             const requestedName = resNames[requestedHeight] || `${requestedHeight}p`;
-            const actualName = resNames[actualHeight] || `${actualHeight}p`;
+            const actualName = resNames[maxHeight] || `${maxHeight}p`;
             
             const warningWindow = new BrowserWindow({
               width: 500,
@@ -1669,7 +1856,8 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
               });
             });
             
-            checkResolve(userChoice);
+            // Se o usuário aceitou, retornar a resolução máxima disponível
+            checkResolve(userChoice ? maxHeight : false);
           } else {
             checkResolve(true);
           }
@@ -1705,6 +1893,15 @@ ipcMain.handle("start-download", async (event, dados) => {
   
   // Reset flag de cancelamento no início do download
   downloadCancelledFlags.set(tabId, false);
+  
+  // Se yt-dlp precisa de atualização, mostrar prompt antes de baixar
+  if (ytdlpUpdatePending) {
+    const updated = await showYtdlpUpdatePrompt();
+    
+    if (!updated) {
+      throw new Error('yt-dlp precisa ser atualizado para continuar. Atualize nas configurações ou reinicie o app.');
+    }
+  }
   
   // Verificar se dependências estão instaladas ANTES de tudo
   const deps = await verificarDependencias();
@@ -1823,8 +2020,8 @@ ipcMain.handle("start-download", async (event, dados) => {
           const browserPath = prefs?.browserPath || '';
           const useBrowserCookies = browserPath.trim() !== '';
           
-          // Primeiro: tentar com formato estrito (sem fallback)
-          const strictFormat = `bestvideo[height<=${resolution}]+bestaudio`;
+          // Primeiro: verificar se a resolução solicitada está disponível
+          const strictFormat = `bestvideo[height>=${resolution}]+bestaudio`;
           const checkArgs1 = [
             '-f', strictFormat,
             '--print', '%(height)s',
@@ -1835,16 +2032,12 @@ ipcMain.handle("start-download", async (event, dados) => {
             checkArgs1.push('--cookies-from-browser', browser);
           }
           
-          // iOS client SEMPRE precisa PO Token (mudança do YouTube) - usar apenas web
-          const playerClient = 'web,web_creator';
-          
           checkArgs1.push(
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             '--add-header', 'Accept-Language:pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
             '--add-header', 'Accept-Encoding:gzip, deflate, br',
             '--add-header', 'Referer:https://www.youtube.com/',
-            '--extractor-args', `youtube:player_client=${playerClient};skip=translated_subs`,
             '--extractor-retries', '3',
             '--fragment-retries', '3',
             videoUrl
@@ -1891,8 +2084,8 @@ ipcMain.handle("start-download", async (event, dados) => {
             continue;
           }
           
-          // Segundo: tentar com formato com fallback para ver o que está disponível
-          const fallbackFormat = `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]/bestvideo+bestaudio/best`;
+          // Segundo: buscar a melhor resolução disponível para comparar
+          const fallbackFormat = `bestvideo+bestaudio/best`;
           const checkArgs2 = [
             '-f', fallbackFormat,
             '--print', '%(height)s',
@@ -1903,14 +2096,12 @@ ipcMain.handle("start-download", async (event, dados) => {
             checkArgs2.push('--cookies-from-browser', browser);
           }
           
-          // Usar mesma estratégia de player_client
           checkArgs2.push(
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             '--add-header', 'Accept-Language:pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
             '--add-header', 'Accept-Encoding:gzip, deflate, br',
             '--add-header', 'Referer:https://www.youtube.com/',
-            '--extractor-args', `youtube:player_client=${playerClient};skip=translated_subs`,
             '--extractor-retries', '3',
             '--fragment-retries', '3',
             videoUrl
@@ -2296,12 +2487,13 @@ ipcMain.handle("start-download", async (event, dados) => {
               skippedCount++;
               continue;
             } else {
-              // download
+              // download - usar a resolução real disponível
               if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
                 mainWindowGlobal.webContents.send('log', tabId, `📥 Baixando em ${actualName}...`);
               }
               try {
-                await downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath);
+                const adjustedDados = { ...dados, resolution: String(actualHeight), allowLowerQuality: true };
+                await downloadSingleVideo(tabId, videoUrl, adjustedDados, finalDownloadPath);
                 downloadedCount++;
               } catch (err) {
                 // Se foi cancelado, parar tudo
@@ -2524,34 +2716,23 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
       args.push('--audio-quality', '0');
     } else {
       let formatString;
-      console.log('🎬 CONFIGURANDO FORMATO DE DOWNLOAD (NOVA LÓGICA SEM best/bestvideo):', { resolution, allowLowerQuality, type, format });
+      console.log('🎬 CONFIGURANDO FORMATO DE DOWNLOAD:', { resolution, allowLowerQuality, type, format });
       
       if (resolution && resolution !== 'best') {
         const height = parseInt(resolution);
         
-        // Estratégia baseada na resolução e formato desejado
         if (allowLowerQuality) {
-          // Com fallback: tenta a resolução desejada, depois menores
-          if (height >= 2160) {
-            formatString = `${format}[height>=2160]/mp4[height>=2160]/${format}[height>=1440]/mp4[height>=1440]/${format}[height>=1080]/mp4[height>=1080]/${format}[height>=720]/mp4[height>=720]/${format}/mp4`;
-          } else if (height >= 1440) {
-            formatString = `${format}[height>=1440]/mp4[height>=1440]/${format}[height>=1080]/mp4[height>=1080]/${format}[height>=720]/mp4[height>=720]/${format}/mp4`;
-          } else if (height >= 1080) {
-            formatString = `${format}[height>=1080]/mp4[height>=1080]/${format}[height>=720]/mp4[height>=720]/${format}/mp4`;
-          } else if (height >= 720) {
-            formatString = `${format}[height>=720]/mp4[height>=720]/${format}/mp4`;
-          } else {
-            formatString = `${format}/mp4`;
-          }
+          // Com fallback progressivo por resolução (independente de container)
+          formatString = `bestvideo[height>=${height}]+bestaudio/best[height>=${height}]/bestvideo+bestaudio/best`;
           console.log('📺 Usando formato com fallback progressivo:', formatString);
         } else {
-          // Sem fallback: apenas a resolução exata ou superior no formato desejado
-          formatString = `${format}[height>=${height}]/mp4[height>=${height}]`;
+          // Sem fallback: apenas a resolução solicitada ou superior
+          formatString = `bestvideo[height>=${height}]+bestaudio/best[height>=${height}]`;
           console.log('📺 Usando formato estrito (exact ou superior):', formatString);
         }
       } else {
-        // Para resolution='best', usar o melhor do formato escolhido
-        formatString = `${format}/mp4`;
+        // Para resolution='best', pegar o melhor disponível
+        formatString = `bestvideo+bestaudio/best`;
         console.log('📺 Usando melhor formato disponível:', formatString);
       }
       
@@ -2574,20 +2755,15 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
       args.push('--cookies-from-browser', browser);
     }
     
-    // iOS client SEMPRE precisa PO Token (mudança do YouTube) - usar apenas web
-    const playerClient = 'web,web_creator';
-    
     args.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
     args.push('--add-header', 'Accept-Language:pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7');
     args.push('--add-header', 'Accept-Encoding:gzip, deflate, br');
     args.push('--add-header', 'Referer:https://www.youtube.com/');
-    args.push('--extractor-args', `youtube:player_client=${playerClient};skip=translated_subs`);
     args.push('--extractor-retries', '5');
     args.push('--fragment-retries', '5');
     args.push('--sleep-interval', '1');
     args.push('--max-sleep-interval', '5');
-    args.push('--source-address', '0.0.0.0');
     
     // Verificar se Node.js está disponível
     const spawnOptions = getYtdlpSpawnOptions();
@@ -2776,27 +2952,17 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
         console.log('🎬 Configurando formato playlist/individual:', { resolution, allowLowerQuality, format });
         
         if (allowLowerQuality) {
-          // Com fallback completo
-          if (height >= 2160) {
-            formatString = `${format}[height>=2160]/mp4[height>=2160]/${format}[height>=1440]/mp4[height>=1440]/${format}[height>=1080]/mp4[height>=1080]/${format}[height>=720]/mp4[height>=720]/${format}/mp4`;
-          } else if (height >= 1440) {
-            formatString = `${format}[height>=1440]/mp4[height>=1440]/${format}[height>=1080]/mp4[height>=1080]/${format}[height>=720]/mp4[height>=720]/${format}/mp4`;
-          } else if (height >= 1080) {
-            formatString = `${format}[height>=1080]/mp4[height>=1080]/${format}[height>=720]/mp4[height>=720]/${format}/mp4`;
-          } else if (height >= 720) {
-            formatString = `${format}[height>=720]/mp4[height>=720]/${format}/mp4`;
-          } else {
-            formatString = `${format}/mp4`;
-          }
+          // Com fallback progressivo (independente de container)
+          formatString = `bestvideo[height>=${height}]+bestaudio/best[height>=${height}]/bestvideo+bestaudio/best`;
         } else {
-          // Sem fallback: formato exato
-          formatString = `${format}[height>=${height}]/mp4[height>=${height}]`;
+          // Sem fallback: resolução exata ou superior
+          formatString = `bestvideo[height>=${height}]+bestaudio/best[height>=${height}]`;
         }
       } else {
-        // Melhor qualidade disponível no formato especificado
-        formatString = `${format}/mp4`;
+        // Melhor qualidade disponível
+        formatString = `bestvideo+bestaudio/best`;
       }
-      args.push('-f', formatString);
+      args.push('-f', formatString);  
       args.push('--merge-output-format', format);
     }
     
@@ -2828,20 +2994,15 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
       args.push('--cookies-from-browser', browser);
     }
     
-    // iOS client SEMPRE precisa PO Token (mudança do YouTube) - usar apenas web
-    const playerClient = 'web,web_creator';
-    
     args.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
     args.push('--add-header', 'Accept-Language:pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7');
     args.push('--add-header', 'Accept-Encoding:gzip, deflate, br');
     args.push('--add-header', 'Referer:https://www.youtube.com/');
-    args.push('--extractor-args', `youtube:player_client=${playerClient};skip=translated_subs`);
     args.push('--extractor-retries', '5');
     args.push('--fragment-retries', '5');
     args.push('--sleep-interval', '1');
     args.push('--max-sleep-interval', '5');
-    args.push('--source-address', '0.0.0.0');
     
     args.push('--progress'); // Mostrar progresso
     args.push('--newline'); // Nova linha para cada atualização de progresso
@@ -3221,7 +3382,7 @@ const createWindow = () => {
   mainWindowGlobal = mainWindow;
 
   // DEBUG: Abrir DevTools automaticamente para debug
-  mainWindow.webContents.openDevTools();
+  //mainWindow.webContents.openDevTools();
 
   // Remover menu nativo do Electron
   Menu.setApplicationMenu(null);

@@ -902,15 +902,21 @@ class TabManager {
         
         if (shouldCheckResolution) {
           this.logToTab(tabId, '🔍 Verificando disponibilidade da resolução escolhida...', 'info');
-          const resolutionOk = await window.api.checkResolution(state.url, state.resolution, state.allowLowerQuality);
-          console.log('🔍 Resultado checkResolution:', resolutionOk);
-          if (!resolutionOk) {
+          const resolutionResult = await window.api.checkResolution(state.url, state.resolution, state.allowLowerQuality);
+          console.log('🔍 Resultado checkResolution:', resolutionResult);
+          if (resolutionResult === false) {
             this.logToTab(tabId, '❌ Download cancelado - resolução não disponível', 'error');
             btnDownload.style.display = 'inline-block';
             btnCancelDownload.style.display = 'none';
             return;
           }
-          this.logToTab(tabId, '✅ Resolução verificada - continuando...', 'success');
+          // Se retornou um número, é a resolução máxima disponível (usuário aceitou menor)
+          if (typeof resolutionResult === 'number') {
+            state.resolution = String(resolutionResult);
+            this.logToTab(tabId, `✅ Resolução ajustada para ${resolutionResult}p - continuando...`, 'success');
+          } else {
+            this.logToTab(tabId, '✅ Resolução verificada - continuando...', 'success');
+          }
         } else {
           console.log('⏭️ Pulando verificação de resolução');
         }
