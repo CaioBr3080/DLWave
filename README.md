@@ -207,7 +207,7 @@ Este software é fornecido apenas para uso educacional e pessoal. Respeite os di
 
 <div align="center">
 
-**Feito com ❤️ por [caioa](https://github.com/caioa)**
+**Feito com ❤️ por [CaioBr3080](https://github.com/CaioBr3080)**
 
 Se este projeto foi útil, considere dar uma ⭐!
 
