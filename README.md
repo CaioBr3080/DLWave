@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![DLWave](https://img.shields.io/badge/DLWave-1.0.0-blue)
+![DLWave](https://img.shields.io/badge/DLWave-1.1.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows-blue)
 ![Electron](https://img.shields.io/badge/Electron-28+-purple)
@@ -54,7 +54,7 @@ _(Adicione screenshots do aplicativo aqui)_
 
 Baixe a versão mais recente em [Releases](https://github.com/CaioBr3080/DLWave/releases)
 
-**Arquivo:** `DLWave-1.0.0 Setup.exe`
+**Arquivo:** `DLWave-1.1.1 Setup.exe`
 
 ### ⚠️ Aviso de Antivírus
 
@@ -71,7 +71,7 @@ Antivírus como Windows Defender e Avast podem marcar o aplicativo como suspeito
 
 ## 🚀 Instalação
 
-1. **Baixe** o instalador `DLWave-1.0.0 Setup.exe`
+1. **Baixe** o instalador `DLWave-1.1.1 Setup.exe`
 2. **Execute** o instalador
 3. **Aguarde** a instalação (cria atalho no Menu Iniciar)
 4. **Abra** o DLWave
@@ -116,7 +116,7 @@ C:\Users\[SeuUsuário]\AppData\Local\dlwave\
 
 ### Pré-requisitos
 
-- Node.js 18+ 
+- Node.js v18+ 
 - npm ou yarn
 - Git
 
@@ -179,15 +179,14 @@ Contribuições são bem-vindas! Sinta-se livre para:
 
 ## 📝 Changelog
 
-### v1.0.0 (2026-02-09)
-- ✨ Lançamento inicial
-- 🎨 Sistema de tabs (Waves)
-- 🌐 Suporte multi-idioma (PT-BR, EN)
-- 💾 Perfis de download salvos
-- 📂 Preferências globais
-- 🍪 Suporte a cookies
-- 🎵 Download de playlists
-- 🛡️ Proteção contra múltiplas instâncias
+### v1.1.1 (2026-02-09)
+- ✨ Correções no gerenciamento de resolução
+- 🌐 Melhorias na extração de cookies
+- 💾 Limitador no donwload de playlists
+- 📂 Correções no cancelamento de donwload
+- 🎵 Suporte a plataforma além do YouTube 
+- ⏬ Instalação do YT-DLP via Winget e
+     atualização periódica do mesmo
 
 ## 📄 Licença
 
