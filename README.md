@@ -14,7 +14,7 @@ Construído com Electron, yt-dlp e ffmpeg
 [Download](#-download) • [Recursos](#-recursos) • [Instalação](#-instalação) • [Uso](#-uso) • [Desenvolvimento](#-desenvolvimento)
 
 
-<img width="2100" height="1449" alt="image" src="https://github.com/user-attachments/assets/7a40450d-28bf-4028-9ffb-99ce7efb9b50" />
+<img width="2102" height="1429" alt="image" src="https://github.com/user-attachments/assets/92eff8a3-a9a8-4e0d-81d8-f5206b72de5b" />
 
 ---
 
