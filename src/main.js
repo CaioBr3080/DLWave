@@ -2051,10 +2051,11 @@ ipcMain.handle("start-download", async (event, dados) => {
             }
             
             const proc = spawn(ytdlpPath, checkArgs1, getYtdlpSpawnOptions());
+            downloadProcesses.set(tabId, proc); // Armazenar para permitir cancelamento
             let output = '';
             proc.stdout.on('data', (data) => { output += data.toString(); });
             proc.on('close', (code) => {
-              resolve({ success: code === 0, height: output.trim(), cancelled: false });
+              resolve({ success: code === 0, height: output.trim(), cancelled: downloadCancelledFlags.get(tabId) });
             });
           });
           
@@ -2115,10 +2116,11 @@ ipcMain.handle("start-download", async (event, dados) => {
             }
             
             const proc = spawn(ytdlpPath, checkArgs2, getYtdlpSpawnOptions());
+            downloadProcesses.set(tabId, proc); // Armazenar para permitir cancelamento
             let output = '';
             proc.stdout.on('data', (data) => { output += data.toString(); });
             proc.on('close', (code) => {
-              resolve({ success: code === 0, height: output.trim(), cancelled: false });
+              resolve({ success: code === 0, height: output.trim(), cancelled: downloadCancelledFlags.get(tabId) });
             });
           });
           
@@ -2722,13 +2724,13 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
         const height = parseInt(resolution);
         
         if (allowLowerQuality) {
-          // Com fallback progressivo por resolução (independente de container)
-          formatString = `bestvideo[height>=${height}]+bestaudio/best[height>=${height}]/bestvideo+bestaudio/best`;
+          // Com fallback: melhor vídeo até a resolução solicitada, senão o melhor disponível
+          formatString = `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/bestvideo+bestaudio/best`;
           console.log('📺 Usando formato com fallback progressivo:', formatString);
         } else {
-          // Sem fallback: apenas a resolução solicitada ou superior
-          formatString = `bestvideo[height>=${height}]+bestaudio/best[height>=${height}]`;
-          console.log('📺 Usando formato estrito (exact ou superior):', formatString);
+          // Sem fallback: melhor vídeo até a resolução solicitada
+          formatString = `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]`;
+          console.log('📺 Usando formato estrito (até resolução solicitada):', formatString);
         }
       } else {
         // Para resolution='best', pegar o melhor disponível
@@ -2755,11 +2757,21 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
       args.push('--cookies-from-browser', browser);
     }
     
-    args.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    args.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
     args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
     args.push('--add-header', 'Accept-Language:pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7');
     args.push('--add-header', 'Accept-Encoding:gzip, deflate, br');
-    args.push('--add-header', 'Referer:https://www.youtube.com/');
+    
+    // Headers específicos por plataforma
+    const isTwitterUrl = videoUrl && (videoUrl.includes('twitter.com') || videoUrl.includes('x.com'));
+    if (isTwitterUrl) {
+      args.push('--add-header', 'Referer:https://x.com/');
+      args.push('--add-header', 'Origin:https://x.com');
+      args.push('--legacy-server-connect');
+    } else {
+      args.push('--add-header', 'Referer:https://www.youtube.com/');
+    }
+    
     args.push('--extractor-retries', '5');
     args.push('--fragment-retries', '5');
     args.push('--sleep-interval', '1');
@@ -2848,6 +2860,26 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
         mainWindowGlobal.webContents.send('log', tabId, '⚠️ ERRO: Cookie Database Bloqueado!');
         mainWindowGlobal.webContents.send('log', tabId, '🚫 O navegador está ABERTO e bloqueando o acesso aos cookies.');
         mainWindowGlobal.webContents.send('log', tabId, '📌 SOLUÇÃO: Feche TODAS as janelas do navegador e tente novamente.');
+        mainWindowGlobal.webContents.send('log', tabId, '');
+        return;
+      }
+      
+      // Erro específico do Twitter/X
+      const isTwitterErr = videoUrl && (videoUrl.includes('twitter.com') || videoUrl.includes('x.com'));
+      const twitterErrors = ['could not send request', 'unable to extract', 'http error 403', 'http error 401', 'nsig extraction failed', 'login required', 'not available', 'unable to download video data', 'failed to download m3u8'];
+      const isTwitterError = isTwitterErr && twitterErrors.some(msg => error.toLowerCase().includes(msg));
+      
+      if (isTwitterError && mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, '🐦 ERRO: O Twitter/X bloqueou o acesso ao vídeo (403).');
+        mainWindowGlobal.webContents.send('log', tabId, '📌 SOLUÇÕES (tente na ordem):');
+        mainWindowGlobal.webContents.send('log', tabId, '   1. Use cookies do NAVEGADOR (mais confiável):');
+        mainWindowGlobal.webContents.send('log', tabId, '      • Faça login no Twitter/X no Chrome/Brave/Edge');
+        mainWindowGlobal.webContents.send('log', tabId, '      • FECHE o navegador completamente');
+        mainWindowGlobal.webContents.send('log', tabId, '      • Nas Configurações do DLWave → selecione o navegador');
+        mainWindowGlobal.webContents.send('log', tabId, '   2. Se já configurou cookies e ainda dá 403:');
+        mainWindowGlobal.webContents.send('log', tabId, '      • Certifique-se que o navegador está FECHADO');
+        mainWindowGlobal.webContents.send('log', tabId, '      • Atualize o yt-dlp (Configurações → Reinstalar)');
+        mainWindowGlobal.webContents.send('log', tabId, '      • O Twitter muda frequentemente, a versão mais nova do yt-dlp pode resolver');
         mainWindowGlobal.webContents.send('log', tabId, '');
         return;
       }
@@ -2952,11 +2984,11 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
         console.log('🎬 Configurando formato playlist/individual:', { resolution, allowLowerQuality, format });
         
         if (allowLowerQuality) {
-          // Com fallback progressivo (independente de container)
-          formatString = `bestvideo[height>=${height}]+bestaudio/best[height>=${height}]/bestvideo+bestaudio/best`;
+          // Com fallback: melhor vídeo até a resolução solicitada, senão o melhor disponível
+          formatString = `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/bestvideo+bestaudio/best`;
         } else {
-          // Sem fallback: resolução exata ou superior
-          formatString = `bestvideo[height>=${height}]+bestaudio/best[height>=${height}]`;
+          // Sem fallback: melhor vídeo até a resolução solicitada
+          formatString = `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]`;
         }
       } else {
         // Melhor qualidade disponível
@@ -2994,11 +3026,21 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
       args.push('--cookies-from-browser', browser);
     }
     
-    args.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    args.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
     args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
     args.push('--add-header', 'Accept-Language:pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7');
     args.push('--add-header', 'Accept-Encoding:gzip, deflate, br');
-    args.push('--add-header', 'Referer:https://www.youtube.com/');
+    
+    // Headers específicos por plataforma
+    const isTwitterUrl = url && (url.includes('twitter.com') || url.includes('x.com'));
+    if (isTwitterUrl) {
+      args.push('--add-header', 'Referer:https://x.com/');
+      args.push('--add-header', 'Origin:https://x.com');
+      args.push('--legacy-server-connect');
+    } else {
+      args.push('--add-header', 'Referer:https://www.youtube.com/');
+    }
+    
     args.push('--extractor-retries', '5');
     args.push('--fragment-retries', '5');
     args.push('--sleep-interval', '1');
@@ -3020,6 +3062,7 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
       // Verificar se foi cancelado durante download
       if (downloadCancelledFlags.get(tabId)) {
         ytdlp.kill('SIGTERM');
+        reject(new Error('Download cancelado'));
         return;
       }
       
@@ -3114,6 +3157,26 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
         return;
       }
       
+      // Erro específico do Twitter/X
+      const isTwitterErr = url && (url.includes('twitter.com') || url.includes('x.com'));
+      const twitterErrors = ['could not send request', 'unable to extract', 'http error 403', 'http error 401', 'nsig extraction failed', 'login required', 'not available', 'unable to download video data', 'failed to download m3u8'];
+      const isTwitterError = isTwitterErr && twitterErrors.some(msg => error.toLowerCase().includes(msg));
+      
+      if (isTwitterError && mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, '🐦 ERRO: O Twitter/X bloqueou o acesso ao vídeo (403).');
+        mainWindowGlobal.webContents.send('log', tabId, '📌 SOLUÇÕES (tente na ordem):');
+        mainWindowGlobal.webContents.send('log', tabId, '   1. Use cookies do NAVEGADOR (mais confiável):');
+        mainWindowGlobal.webContents.send('log', tabId, '      • Faça login no Twitter/X no Chrome/Brave/Edge');
+        mainWindowGlobal.webContents.send('log', tabId, '      • FECHE o navegador completamente');
+        mainWindowGlobal.webContents.send('log', tabId, '      • Nas Configurações do DLWave → selecione o navegador');
+        mainWindowGlobal.webContents.send('log', tabId, '   2. Se já configurou cookies e ainda dá 403:');
+        mainWindowGlobal.webContents.send('log', tabId, '      • Certifique-se que o navegador está FECHADO');
+        mainWindowGlobal.webContents.send('log', tabId, '      • Atualize o yt-dlp (Configurações → Reinstalar)');
+        mainWindowGlobal.webContents.send('log', tabId, '      • O Twitter muda frequentemente, a versão mais nova do yt-dlp pode resolver');
+        mainWindowGlobal.webContents.send('log', tabId, '');
+        return;
+      }
+      
       if (isAuthError && mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
         mainWindowGlobal.webContents.send('log', tabId, '🔐 ERRO: Este vídeo requer autenticação (pode ter restrição de idade).');
         mainWindowGlobal.webContents.send('log', tabId, '📌 SOLUÇÃO:');
@@ -3192,17 +3255,12 @@ ipcMain.handle("cancel-download", async (event, tabId) => {
       }
     }
     
-    // Aguardar um pouco para garantir que o loop de playlist detecte o cancelamento
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Resetar a flag após dar tempo de tudo parar
-    console.log(`✅ Resetando flag de cancelamento para tabId: ${tabId}`);
-    downloadCancelledFlags.set(tabId, false);
+    // NÃO resetar a flag aqui - ela será resetada no início do próximo download
+    // (linha downloadCancelledFlags.set(tabId, false) no start-download handler)
+    // Resetar cedo demais faz o close event e loops de playlist não detectarem o cancelamento
     
     return { sucesso: true, mensagem: 'Download cancelado' };
   } catch (error) {
-    // Resetar flag mesmo em caso de erro
-    downloadCancelledFlags.set(tabId, false);
     return { sucesso: false, mensagem: `Erro ao cancelar: ${error.message}` };
   }
 });
