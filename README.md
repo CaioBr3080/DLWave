@@ -17,10 +17,6 @@ Construído com Electron, yt-dlp e ffmpeg
 
 ---
 
-## 📸 Screenshots
-
-_(Adicione screenshots do aplicativo aqui)_
-
 ## ✨ Recursos
 
 ### 🎯 Interface Intuitiva
