@@ -16,7 +16,7 @@ Construído com Electron, yt-dlp e ffmpeg
 
 <img width="1892" height="1433" alt="image" src="https://github.com/user-attachments/assets/8d6440b9-3864-4638-936a-96aed9d9d815" />
 
----
+----
 
 ## ✨ Recursos
 
