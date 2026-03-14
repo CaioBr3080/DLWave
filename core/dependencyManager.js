@@ -354,6 +354,7 @@ async function instalarDeps(onProgress) {
 }
 
 export {
+  binPath,
   setBinPath,
   depsOk,
   verificarDependencias,
