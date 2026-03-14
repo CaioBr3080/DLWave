@@ -17,6 +17,8 @@ module.exports = {
       /^\/bin\/.*\.exe$/,
       /^\/bin\/ffmpeg\.exe$/,
       /^\/bin\/yt-dlp\.exe$/,
+      /^\/bin\/ffmpeg$/,
+      /^\/bin\/yt-dlp$/,
       /^\/deps\//
     ],
     

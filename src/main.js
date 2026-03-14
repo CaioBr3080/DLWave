@@ -30,6 +30,11 @@ if (!gotTheLock) {
 let mainWindowGlobal = null;
 const downloadProcesses = new Map(); // Map<tabId, process>
 const downloadCancelledFlags = new Map(); // Map<tabId, boolean>
+
+const isWindows = process.platform === 'win32';
+const isLinux   = process.platform === 'linux';
+const ffmpegBin = isWindows ? 'ffmpeg.exe' : 'ffmpeg';
+const ytdlpBin  = isWindows ? 'yt-dlp.exe' : 'yt-dlp';
 let tray = null;
 let ytdlpUpdatePending = false; // Flag: yt-dlp precisa de atualização
 
@@ -954,13 +959,13 @@ async function instalarDepsComUI() {
                 fileName.textContent = '🌐 yt-dlp (Global)';
                 status.textContent = data.etapa;
               } else if (data.etapa.includes('yt-dlp')) {
-                fileName.textContent = 'yt-dlp.exe';
+                fileName.textContent = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
                 status.textContent = 'Baixando yt-dlp...';
               } else if (data.etapa.includes('ffmpeg')) {
-                fileName.textContent = 'ffmpeg.zip';
+                fileName.textContent = process.platform === 'win32' ? 'ffmpeg.zip' : 'ffmpeg.tar.xz';
                 status.textContent = 'Baixando ffmpeg...';
               } else if (data.etapa.includes('Extraindo')) {
-                fileName.textContent = 'ffmpeg.exe';
+                fileName.textContent = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
                 status.textContent = 'Extraindo arquivo...';
               } else if (data.etapa.includes('Concluído') || data.etapa.includes('✅')) {
                 fileName.textContent = '✓ Concluído';
@@ -1199,7 +1204,7 @@ ipcMain.handle("select-browser-file", async () => {
   const result = await dialog.showOpenDialog(mainWindowGlobal, {
     properties: ['openFile'],
     filters: [
-      { name: 'Executáveis', extensions: ['exe'] },
+      ...(isWindows ? [{ name: 'Executáveis', extensions: ['exe'] }] : []),
       { name: 'Todos os Arquivos', extensions: ['*'] }
     ],
     title: 'Selecione o executável do navegador'
@@ -1407,10 +1412,9 @@ function detectBrowser(userPreference = '') {
   // Se usuário forneceu um caminho de arquivo, extrair o nome do navegador
   if (userPreference && (userPreference.includes('\\') || userPreference.includes('/') || userPreference.endsWith('.exe'))) {
     if (fs.existsSync(userPreference)) {
-      // Extrair nome do arquivo do caminho
+      // Extrair nome do arquivo do caminho (sem extensão)
       const fileName = path.basename(userPreference, '.exe').toLowerCase();
       
-      // Mapear nomes de arquivos para nomes de navegadores que o yt-dlp aceita
       const browserMap = {
         'brave': 'brave',
         'chrome': 'chrome',
@@ -1431,27 +1435,38 @@ function detectBrowser(userPreference = '') {
     }
   }
   
-  // Auto-detect: verificar quais navegadores estão instalados (fallback silencioso)
-  let browser = 'chrome'; // Padrão fallback
-  const edgePath = path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'Microsoft', 'Edge', 'Application', 'msedge.exe');
-  const chromePath = path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe');
-  const bravePath = path.join(process.env.LOCALAPPDATA || '', 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe');
-  const firefoxPath = path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'Mozilla Firefox', 'firefox.exe');
-  const operaPath = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Opera', 'opera.exe');
+  // Auto-detect: caminhos por plataforma
+  let browser = 'chrome';
   
-  if (fs.existsSync(bravePath)) {
-    browser = 'brave';
-  } else if (fs.existsSync(edgePath)) {
-    browser = 'edge';
-  } else if (fs.existsSync(chromePath)) {
-    browser = 'chrome';
-  } else if (fs.existsSync(firefoxPath)) {
-    browser = 'firefox';
-  } else if (fs.existsSync(operaPath)) {
-    browser = 'opera';
+  if (isWindows) {
+    const edgePath   = path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'Microsoft', 'Edge', 'Application', 'msedge.exe');
+    const chromePath = path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe');
+    const bravePath  = path.join(process.env.LOCALAPPDATA || '', 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe');
+    const firefoxPath= path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'Mozilla Firefox', 'firefox.exe');
+    const operaPath  = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Opera', 'opera.exe');
+    if      (fs.existsSync(bravePath))   browser = 'brave';
+    else if (fs.existsSync(edgePath))    browser = 'edge';
+    else if (fs.existsSync(chromePath))  browser = 'chrome';
+    else if (fs.existsSync(firefoxPath)) browser = 'firefox';
+    else if (fs.existsSync(operaPath))   browser = 'opera';
+  } else {
+    // Linux / macOS
+    const linuxPaths = [
+      ['/opt/brave.com/brave/brave',          'brave'],
+      ['/usr/bin/brave-browser',               'brave'],
+      ['/usr/bin/google-chrome',               'chrome'],
+      ['/usr/bin/google-chrome-stable',        'chrome'],
+      ['/usr/bin/chromium-browser',            'chromium'],
+      ['/usr/bin/chromium',                    'chromium'],
+      ['/usr/bin/firefox',                     'firefox'],
+      ['/usr/bin/opera',                       'opera'],
+      ['/usr/bin/vivaldi',                     'vivaldi'],
+    ];
+    for (const [p, name] of linuxPaths) {
+      if (fs.existsSync(p)) { browser = name; break; }
+    }
   }
   
-  // Log apenas se foi configurado manualmente pelo usuário
   if (userPreference && userPreference.trim() !== '') {
     console.log(`🍪 Usando navegador configurado: ${browser}`);
   }
@@ -1461,35 +1476,40 @@ function detectBrowser(userPreference = '') {
 
 // Função helper para criar opções de spawn do yt-dlp com Node.js do Electron
 function getYtdlpSpawnOptions() {
-  // Obter diretório do Node.js embutido no Electron
   const electronNodePath = path.dirname(process.execPath);
+  const pathSep = isWindows ? ';' : ':';
   
-  // Adicionar locais comuns do Node.js no Windows
-  const commonNodePaths = [
-    electronNodePath,
-    'C:\\Program Files\\nodejs',
-    'C:\\Program Files (x86)\\nodejs',
-    path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'nodejs'),
-    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'nodejs'),
-    path.join(process.env.APPDATA || '', 'npm')
-  ].filter(p => p && fs.existsSync(p)).join(';');
+  let extraPaths;
+  if (isWindows) {
+    extraPaths = [
+      electronNodePath,
+      'C:\\Program Files\\nodejs',
+      'C:\\Program Files (x86)\\nodejs',
+      path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'nodejs'),
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'nodejs'),
+      path.join(process.env.APPDATA || '', 'npm')
+    ].filter(p => p && fs.existsSync(p)).join(pathSep);
+  } else {
+    extraPaths = [
+      electronNodePath,
+      '/usr/bin',
+      '/usr/local/bin',
+      '/opt/homebrew/bin',
+      path.join(process.env.HOME || '', '.local', 'bin')
+    ].filter(p => p && fs.existsSync(p)).join(pathSep);
+  }
   
-  // Criar cópia do PATH atual e adicionar os caminhos do Node.js no início
   const currentPath = process.env.PATH || '';
-  const newPath = `${commonNodePaths};${currentPath}`;
+  const newPath = `${extraPaths}${pathSep}${currentPath}`;
   
-  console.log('🔧 PATH configurado para yt-dlp:');
-  console.log(`   Node.js paths: ${commonNodePaths}`);
+  console.log('🔧 PATH configurado para yt-dlp:', extraPaths);
   
   return {
     env: {
       ...process.env,
       PATH: newPath,
-      // Força yt-dlp a preferir Node.js para desafios JavaScript (n parameter)
-      // Ao invés de tentar baixar/usar PhantomJS
       NODE_OPTIONS: '',
-      // Define explicitamente onde está o Node.js
-      NODE_PATH: commonNodePaths.split(';')[0]
+      NODE_PATH: extraPaths.split(pathSep)[0]
     }
   };
 }
@@ -1906,7 +1926,7 @@ ipcMain.handle("start-download", async (event, dados) => {
   // Verificar se dependências estão instaladas ANTES de tudo
   const deps = await verificarDependencias();
   const ytdlpPath = await getYtdlpPath();
-  const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
+  const ffmpegPath = path.join(binPath, ffmpegBin);
   
   if (!deps.todasOk) {
     const errorMsg = `❌ ERRO: Dependências não instaladas!\n` +
@@ -1926,17 +1946,15 @@ ipcMain.handle("start-download", async (event, dados) => {
   
   try {
     // Verificar espaço em disco disponível
-    const driveLetter = path.parse(downloadPath).root;
     const checkDiskSpace = () => {
       return new Promise((resolve) => {
-        exec(`powershell -command "Get-PSDrive -Name ${driveLetter.replace(':', '').replace('\\', '')} | Select-Object -ExpandProperty Free"`, (error, stdout) => {
-          if (error) {
-            resolve(null); // Ignorar erro se não conseguir verificar
-          } else {
-            const freeBytes = parseInt(stdout.trim());
-            resolve(freeBytes);
-          }
-        });
+        try {
+          // Node 18+: fs.statfsSync — funciona em Windows e Linux
+          const stat = fs.statfsSync(downloadPath);
+          resolve(stat.bfree * stat.bsize);
+        } catch {
+          resolve(null);
+        }
       });
     };
     
@@ -2011,7 +2029,7 @@ ipcMain.handle("start-download", async (event, dados) => {
         try {
           // Verificar resolução disponível do vídeo
           const ytdlpPath = await getYtdlpPath();
-          const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
+          const ffmpegPath = path.join(binPath, ffmpegBin);
           const requestedHeight = parseInt(resolution);
           
           // Detectar browser para cookies
@@ -2612,55 +2630,52 @@ ipcMain.handle("start-download", async (event, dados) => {
 // Função auxiliar para detectar e retornar o caminho do yt-dlp (global ou local)
 function getYtdlpPath() {
   return new Promise((resolve) => {
-    // Primeiro: verificar WinGet Links
-    const wingetLinksPath = path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Links', 'yt-dlp.exe');
-    if (fs.existsSync(wingetLinksPath)) {
-      console.log(`🌐 yt-dlp via WinGet Links: ${wingetLinksPath}`);
-      resolve(wingetLinksPath);
-      return;
-    }
+    const localPath = path.join(binPath, ytdlpBin);
     
-    // Segundo: verificar WinGet Packages
-    const packagesPath = path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Packages');
-    if (fs.existsSync(packagesPath)) {
-      try {
-        const ytdlpDirs = fs.readdirSync(packagesPath).filter(dir => dir.startsWith('yt-dlp.yt-dlp'));
-        for (const dir of ytdlpDirs) {
-          const ytdlpExePath = path.join(packagesPath, dir, 'yt-dlp.exe');
-          if (fs.existsSync(ytdlpExePath)) {
-            console.log(`🌐 yt-dlp via WinGet Packages: ${ytdlpExePath}`);
-            resolve(ytdlpExePath);
-            return;
+    if (isWindows) {
+      // WinGet Links
+      const wingetLinksPath = path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Links', 'yt-dlp.exe');
+      if (fs.existsSync(wingetLinksPath)) {
+        console.log(`🌐 yt-dlp via WinGet Links: ${wingetLinksPath}`);
+        resolve(wingetLinksPath); return;
+      }
+      // WinGet Packages
+      const packagesPath = path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Packages');
+      if (fs.existsSync(packagesPath)) {
+        try {
+          const dirs = fs.readdirSync(packagesPath).filter(d => d.startsWith('yt-dlp.yt-dlp'));
+          for (const dir of dirs) {
+            const p = path.join(packagesPath, dir, 'yt-dlp.exe');
+            if (fs.existsSync(p)) { console.log(`🌐 yt-dlp via WinGet Packages: ${p}`); resolve(p); return; }
+          }
+        } catch (err) { console.warn('⚠️ Erro WinGet Packages:', err.message); }
+      }
+      // where (PATH)
+      exec('where yt-dlp', (error, stdout) => {
+        if (!error && stdout.trim()) {
+          for (const p of stdout.trim().split('\n')) {
+            const clean = p.trim();
+            if (clean.toLowerCase().endsWith('.exe') && fs.existsSync(clean)) {
+              console.log(`🌐 yt-dlp.exe no PATH: ${clean}`); resolve(clean); return;
+            }
           }
         }
-      } catch (err) {
-        console.warn('⚠️ Erro ao verificar WinGet Packages:', err.message);
-      }
-    }
-    
-    // Terceiro: usar where mas validar que é .exe
-    exec('where yt-dlp', (error, stdout) => {
-      if (!error && stdout.trim()) {
-        const paths = stdout.trim().split('\n');
-        
-        // Procurar por .exe válido (não script Python)
-        for (const p of paths) {
-          const cleanPath = p.trim();
-          if (cleanPath.toLowerCase().endsWith('.exe') && fs.existsSync(cleanPath)) {
-            console.log(`🌐 yt-dlp.exe encontrado no PATH: ${cleanPath}`);
-            resolve(cleanPath);
-            return;
+        console.log(`📦 Usando yt-dlp LOCAL: ${localPath}`);
+        resolve(localPath);
+      });
+    } else {
+      // Linux / macOS: which
+      exec('which yt-dlp', (error, stdout) => {
+        if (!error && stdout.trim()) {
+          const p = stdout.trim();
+          if (fs.existsSync(p)) {
+            console.log(`🌐 yt-dlp no PATH: ${p}`); resolve(p); return;
           }
         }
-        
-        console.log(`⚠️ where encontrou yt-dlp mas nenhum .exe válido. Usando local.`);
-      }
-      
-      // Fallback: usar o local
-      const localPath = path.join(binPath, 'yt-dlp.exe');
-      console.log(`📦 Usando yt-dlp LOCAL: ${localPath}`);
-      resolve(localPath);
-    });
+        console.log(`📦 Usando yt-dlp LOCAL: ${localPath}`);
+        resolve(localPath);
+      });
+    }
   });
 }
 
@@ -2670,7 +2685,7 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
   
   // Detectar yt-dlp (global ou local)
   const ytdlpPath = await getYtdlpPath();
-  const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
+  const ffmpegPath = path.join(binPath, ffmpegBin);
   
   return new Promise((resolve, reject) => {
     // Verificar cancelamento antes de iniciar
@@ -2934,7 +2949,7 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
   
   // Detectar yt-dlp (global ou local)
   const ytdlpPath = await getYtdlpPath();
-  const ffmpegPath = path.join(binPath, 'ffmpeg.exe');
+  const ffmpegPath = path.join(binPath, ffmpegBin);
   
   return new Promise((resolve, reject) => {
     // Verificar se yt-dlp existe
