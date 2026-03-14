@@ -61,7 +61,7 @@ Na página de [Releases](https://github.com/CaioBr3080/DLWave/releases), baixe t
 
 ### ⚠️ Aviso de Antivírus
 
-Antivírus como Windows Defender e Avast podem marcar o aplicativo como suspeito. **Isso é normal** porque:
+Antivírus podem marcar o aplicativo como suspeito. **Isso é normal** porque:
 
 - O executável não está assinado digitalmente (certificados custam ~R$ 500-1500/ano)
 - O app baixa arquivos da internet (yt-dlp, ffmpeg, vídeos)
