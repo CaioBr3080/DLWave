@@ -4,7 +4,7 @@
 
 ![DLWave](https://img.shields.io/badge/DLWave-1.1.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Platform](https://img.shields.io/badge/platform-Windows-blue)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-blue)
 ![Electron](https://img.shields.io/badge/Electron-28+-purple)
 
 **Downloader de vídeos e áudios do YouTube com interface moderna e intuitiva**
@@ -52,6 +52,13 @@ Baixe a versão mais recente em [Releases](https://github.com/CaioBr3080/DLWave/
 
 **Arquivo:** `DLWave-1.1.1 Setup.exe`
 
+### Pacotes Linux (Ubuntu/Pop!_OS e derivados)
+
+Na página de [Releases](https://github.com/CaioBr3080/DLWave/releases), baixe também os pacotes Linux:
+
+- `.deb` (Debian/Ubuntu/Pop!_OS)
+- `.rpm` (Fedora/openSUSE e compatíveis)
+
 ### ⚠️ Aviso de Antivírus
 
 Antivírus como Windows Defender e Avast podem marcar o aplicativo como suspeito. **Isso é normal** porque:
@@ -67,6 +74,8 @@ Antivírus como Windows Defender e Avast podem marcar o aplicativo como suspeito
 
 ## 🚀 Instalação
 
+### Windows
+
 1. **Baixe** o instalador `DLWave-1.1.1 Setup.exe`
 2. **Execute** o instalador
 3. **Aguarde** a instalação (cria atalho no Menu Iniciar)
@@ -77,6 +86,15 @@ Antivírus como Windows Defender e Avast podem marcar o aplicativo como suspeito
 ```
 C:\Users\[SeuUsuário]\AppData\Local\dlwave\
 ```
+
+### Linux
+
+1. **Baixe** o pacote `.deb` (ou `.rpm`) da versão desejada em [Releases](https://github.com/CaioBr3080/DLWave/releases)
+2. **Instale** o pacote com o gerenciador da sua distro
+3. **Abra** o DLWave pelo menu de aplicativos
+4. **Instale dependências** (yt-dlp + ffmpeg) quando solicitado na primeira execução
+
+> O app detecta o sistema e usa os binários corretos para Linux (`yt-dlp` e `ffmpeg`, sem `.exe`).
 
 ## 📖 Uso
 
@@ -136,7 +154,14 @@ npm start
 npm run make
 ```
 
-O instalador será gerado em: `out/make/squirrel.windows/x64/`
+Os artefatos serão gerados em `out/make/`, variando por plataforma:
+
+- **Windows:** `out/make/squirrel.windows/x64/`
+- **Linux:** pacotes `.deb` e `.rpm` em subpastas de `out/make/`
+
+### Build Linux (dica)
+
+Para gerar artefatos Linux, rode o `npm run make` em uma máquina Linux (ou CI Linux), com as ferramentas de empacotamento instaladas no sistema.
 
 ### Estrutura do Projeto
 
@@ -174,6 +199,11 @@ Contribuições são bem-vindas! Sinta-se livre para:
 5. Abrir um Pull Request
 
 ## 📝 Changelog
+
+### v1.1.2 (Linux support)
+- 🐧 Compatibilidade com Linux (Ubuntu/Pop!_OS e derivados)
+- 🔧 Detecção cross-platform de binários (`yt-dlp` e `ffmpeg`)
+- 📦 Ajustes de build para empacotamento Linux
 
 ### v1.1.1 (2026-02-09)
 - ✨ Correções no gerenciamento de resolução
