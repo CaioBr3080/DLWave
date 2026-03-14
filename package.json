@@ -45,6 +45,7 @@
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
-    "electron-squirrel-startup": "^1.0.1"
+    "electron-squirrel-startup": "^1.0.1",
+    "rcedit": "^5.0.2"
   }
 }
