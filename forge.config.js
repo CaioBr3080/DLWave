@@ -32,6 +32,7 @@ module.exports = {
     {
       name: '@electron-forge/maker-squirrel',
       config: {
+        setupIcon: './assets/icon.ico',     // Ícone do instalador Setup.exe
         // Para assinar digitalmente o instalador (quando tiver certificado .pfx):
         // certificateFile: './certificado.pfx',
         // certificatePassword: process.env.CERTIFICATE_PASSWORD,
