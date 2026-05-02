@@ -50,7 +50,7 @@ Construído com Electron, yt-dlp e ffmpeg
 
 Baixe a versão mais recente em [Releases](https://github.com/CaioBr3080/DLWave/releases)
 
-**Arquivo:** `DLWave-1.1.1 Setup.exe`
+**Arquivo:** `DLWave-1.1.1 Setup.deb`
 
 ### Pacotes Linux (Ubuntu/Pop!_OS e derivados)
 
@@ -61,7 +61,7 @@ Na página de [Releases](https://github.com/CaioBr3080/DLWave/releases), baixe t
 
 ### ⚠️ Aviso de Antivírus
 
-Antivírus como Windows Defender e Avast podem marcar o aplicativo como suspeito. **Isso é normal** porque:
+Antivírus podem marcar o aplicativo como suspeito. **Isso é normal** porque:
 
 - O executável não está assinado digitalmente (certificados custam ~R$ 500-1500/ano)
 - O app baixa arquivos da internet (yt-dlp, ffmpeg, vídeos)
@@ -73,19 +73,6 @@ Antivírus como Windows Defender e Avast podem marcar o aplicativo como suspeito
 3. Compilar você mesmo a partir do código
 
 ## 🚀 Instalação
-
-### Windows
-
-1. **Baixe** o instalador `DLWave-1.1.1 Setup.exe`
-2. **Execute** o instalador
-3. **Aguarde** a instalação (cria atalho no Menu Iniciar)
-4. **Abra** o DLWave
-5. **Instale dependências** (yt-dlp + ffmpeg) quando solicitado
-
-**Local de instalação:**
-```
-C:\Users\[SeuUsuário]\AppData\Local\dlwave\
-```
 
 ### Linux
 
