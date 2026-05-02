@@ -127,6 +127,8 @@ class TabManager {
         format: 'mp4',
         resolution: 'best',
         downloadPath: '',
+        trimStart: '',
+        trimEnd: '',
         ignorePlaylist: ignorePlaylistDefault,
         allowLowerQuality: false, // Padrão sempre false (sempre perguntar)
         isPlaylistDownload: false,
@@ -362,7 +364,25 @@ class TabManager {
       console.log(`Tab ${id}: Ignorar playlist = ${state.ignorePlaylist}`);
       this.saveTabsState();
     });
-    
+
+    // Trim inputs
+    const trimStartInput = content.querySelector('.trim-start-input');
+    const trimEndInput = content.querySelector('.trim-end-input');
+
+    if (trimStartInput && trimEndInput) {
+      trimStartInput.addEventListener('change', () => {
+        state.trimStart = trimStartInput.value;
+        console.log(`Tab ${id}: Trim start atualizado para "${state.trimStart}"`);
+        this.saveTabsState();
+      });
+
+      trimEndInput.addEventListener('change', () => {
+        state.trimEnd = trimEndInput.value;
+        console.log(`Tab ${id}: Trim end atualizado para "${state.trimEnd}"`);
+        this.saveTabsState();
+      });
+    }
+
     // Escolher pasta
     btnBrowse.addEventListener('click', async () => {
       const folder = await window.api.selectFolder();
@@ -516,7 +536,17 @@ class TabManager {
     if (ignorePlaylistCheckbox) {
       ignorePlaylistCheckbox.checked = state.ignorePlaylist || false;
     }
-    
+
+    // Restaurar inputs de trim
+    const trimStartInput = content.querySelector('.trim-start-input');
+    const trimEndInput = content.querySelector('.trim-end-input');
+    if (trimStartInput) {
+      trimStartInput.value = state.trimStart || '';
+    }
+    if (trimEndInput) {
+      trimEndInput.value = state.trimEnd || '';
+    }
+
     // Restaurar aparência do botão allowLowerQuality
     const btnQualityWarning = content.querySelector('.btn-quality-warning');
     if (btnQualityWarning) {
@@ -806,7 +836,14 @@ class TabManager {
       this.logToTab(tabId, '⚠️ Selecione uma pasta de download ou configure uma pasta padrão nas configurações', 'error');
       return;
     }
-    
+
+    // Validar trim times
+    const trimValidation = validateTrimTimes(state.trimStart, state.trimEnd);
+    if (!trimValidation.valid) {
+      this.logToTab(tabId, `⚠️ ${trimValidation.error}`, 'error');
+      return;
+    }
+
     // Atualizar UI e resetar flag de cancelamento
     btnDownload.style.display = 'none';
     btnCancelDownload.style.display = 'inline-block';
@@ -878,7 +915,9 @@ class TabManager {
           playlistItems: state.playlistItems,
           isPlaylist: true,
           ignorePlaylist: state.ignorePlaylist,
-          cookiesFilePath: prefs?.cookiesFilePath || ''
+          cookiesFilePath: prefs?.cookiesFilePath || '',
+          trimStart: state.trimStart,
+          trimEnd: state.trimEnd
         });
       } else {
         if (state.ignorePlaylist && this.checkIfPlaylist(state.url)) {
@@ -941,7 +980,9 @@ class TabManager {
           allowLowerQuality: state.allowLowerQuality,
           isPlaylist: false,
           ignorePlaylist: state.ignorePlaylist,
-          cookiesFilePath: prefs?.cookiesFilePath || ''
+          cookiesFilePath: prefs?.cookiesFilePath || '',
+          trimStart: state.trimStart,
+          trimEnd: state.trimEnd
         });
       }
       
@@ -1078,6 +1119,58 @@ class TabManager {
       }
     }
   }
+}
+
+// ============================================
+// TRIM VALIDATION FUNCTIONS
+// ============================================
+
+function validateTrimTimes(start, end) {
+  // Se ambos estão vazios, é válido (sem trim)
+  if (!start && !end) {
+    return { valid: true };
+  }
+
+  // Validar formato: MM:SS ou HH:MM:SS
+  const timeRegex = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/;
+
+  if (start && !timeRegex.test(start)) {
+    return { valid: false, error: 'Formato inválido para início. Use MM:SS ou HH:MM:SS' };
+  }
+  if (end && !timeRegex.test(end)) {
+    return { valid: false, error: 'Formato inválido para fim. Use MM:SS ou HH:MM:SS' };
+  }
+
+  // Se um está preenchido, o outro também deve estar
+  if ((start || end) && !(start && end)) {
+    return { valid: false, error: 'Preencha tanto início quanto fim, ou deixe vazios' };
+  }
+
+  // Verificar se start < end
+  if (start && end) {
+    const startSec = timeToSeconds(start);
+    const endSec = timeToSeconds(end);
+    if (startSec >= endSec) {
+      return { valid: false, error: 'O tempo de início deve ser menor que o tempo de fim' };
+    }
+  }
+
+  return { valid: true };
+}
+
+function timeToSeconds(timeStr) {
+  const parts = timeStr.split(':').map(Number);
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return 0;
+}
+
+function secondsToTime(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 // ============================================

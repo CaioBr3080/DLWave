@@ -1897,18 +1897,82 @@ ipcMain.handle("check-resolution", async (event, url, resolution, allowLowerQual
   }
 });
 
+// Helper functions para trim
+function timeToSeconds(timeStr) {
+  const parts = timeStr.split(':').map(Number);
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return 0;
+}
+
+function secondsToTime(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+async function validateTrimAgainstVideo(videoUrl, trimStart, trimEnd, tabId) {
+  if (!trimStart || !trimEnd) return true; // Sem trim, ok
+
+  try {
+    const ytdlpPath = await getYtdlpPath();
+
+    // Get video duration
+    const getDuration = await new Promise((resolve) => {
+      const args = [
+        '--print', '%(duration)s',
+        '--no-playlist',
+        videoUrl
+      ];
+
+      const proc = spawn(ytdlpPath, args, getYtdlpSpawnOptions());
+      let output = '';
+      proc.stdout.on('data', (data) => { output += data.toString(); });
+      proc.on('close', (code) => {
+        resolve({ success: code === 0, duration: parseInt(output.trim()) });
+      });
+    });
+
+    if (!getDuration.success) {
+      throw new Error('Não foi possível obter a duração do vídeo');
+    }
+
+    const endSeconds = timeToSeconds(trimEnd);
+
+    if (endSeconds > getDuration.duration) {
+      if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId,
+          `❌ Erro: Minutagem inválida! Vídeo tem ${secondsToTime(getDuration.duration)}, mas fim é ${trimEnd}`
+        );
+      }
+      throw new Error(`Tempo de fim (${trimEnd}) é maior que a duração do vídeo (${secondsToTime(getDuration.duration)})`);
+    }
+
+    return true;
+  } catch (err) {
+    if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+      mainWindowGlobal.webContents.send('log', tabId, `❌ Erro ao validar minutagem: ${err.message}`);
+    }
+    throw err;
+  }
+}
+
 // Handler para iniciar download
 ipcMain.handle("start-download", async (event, dados) => {
-  const { tabId, url, type, format, resolution, downloadPath, playlistFolderName, allowLowerQuality, playlistItems, ignorePlaylist, cookiesFilePath } = dados;
-  
+  const { tabId, url, type, format, resolution, downloadPath, playlistFolderName, allowLowerQuality, playlistItems, ignorePlaylist, cookiesFilePath, trimStart, trimEnd } = dados;
+
   console.log('🚀 START-DOWNLOAD DADOS RECEBIDOS:', {
-    tabId, 
+    tabId,
     url: url?.substring(0, 50),
-    type, 
-    format, 
-    resolution, 
+    type,
+    format,
+    resolution,
     allowLowerQuality,
-    ignorePlaylist
+    ignorePlaylist,
+    trimStart,
+    trimEnd
   });
   
   // Reset flag de cancelamento no início do download
@@ -2681,12 +2745,24 @@ function getYtdlpPath() {
 
 // Função auxiliar para baixar um único vídeo
 async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
-  const { type, format, resolution, cookiesFilePath, allowLowerQuality } = dados;
-  
+  const { type, format, resolution, cookiesFilePath, allowLowerQuality, trimStart, trimEnd } = dados;
+
+  // Validar trim antes de iniciar download
+  if (trimStart && trimEnd) {
+    try {
+      await validateTrimAgainstVideo(videoUrl, trimStart, trimEnd, tabId);
+      if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId, `✅ Minutagem validada!`);
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
   // Detectar yt-dlp (global ou local)
   const ytdlpPath = await getYtdlpPath();
   const ffmpegPath = path.join(binPath, ffmpegBin);
-  
+
   return new Promise((resolve, reject) => {
     // Verificar cancelamento antes de iniciar
     if (downloadCancelledFlags.get(tabId)) {
@@ -2756,7 +2832,23 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
       args.push('-f', formatString);
       args.push('--merge-output-format', format);
     }
-    
+
+    // Adicionar args de trim se fornecido
+    if (trimStart && trimEnd) {
+      const startSec = timeToSeconds(trimStart);
+      const endSec = timeToSeconds(trimEnd);
+      const duration = endSec - startSec;
+
+      // Passar ao ffmpeg via postprocessor-args
+      args.push('--postprocessor-args', `-ss ${startSec} -to ${endSec}`);
+
+      if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId,
+          `✂️ Trimando: ${trimStart} - ${trimEnd} (~${Math.round(duration)}s)`
+        );
+      }
+    }
+
     args.push('--ffmpeg-location', ffmpegPath);
     args.push('-o', path.join(finalDownloadPath, '%(title)s.%(ext)s'));
     args.push('--no-playlist');
@@ -2945,7 +3037,7 @@ async function downloadSingleVideo(tabId, videoUrl, dados, finalDownloadPath) {
 
 // Função auxiliar para baixar um chunk (lote) da playlist
 async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = null, playlistEnd = null) {
-  const { url, type, format, resolution, ignorePlaylist, cookiesFilePath, allowLowerQuality } = dados;
+  const { url, type, format, resolution, ignorePlaylist, cookiesFilePath, allowLowerQuality, trimStart, trimEnd } = dados;
   
   // Detectar yt-dlp (global ou local)
   const ytdlpPath = await getYtdlpPath();
@@ -3009,10 +3101,26 @@ async function downloadChunk(tabId, dados, finalDownloadPath, playlistStart = nu
         // Melhor qualidade disponível
         formatString = `bestvideo+bestaudio/best`;
       }
-      args.push('-f', formatString);  
+      args.push('-f', formatString);
       args.push('--merge-output-format', format);
     }
-    
+
+    // Adicionar args de trim se fornecido
+    if (trimStart && trimEnd) {
+      const startSec = timeToSeconds(trimStart);
+      const endSec = timeToSeconds(trimEnd);
+      const duration = endSec - startSec;
+
+      // Passar ao ffmpeg via postprocessor-args
+      args.push('--postprocessor-args', `-ss ${startSec} -to ${endSec}`);
+
+      if (mainWindowGlobal && !mainWindowGlobal.isDestroyed()) {
+        mainWindowGlobal.webContents.send('log', tabId,
+          `✂️ Trimando: ${trimStart} - ${trimEnd} (~${Math.round(duration)}s)`
+        );
+      }
+    }
+
     // Configurações gerais
     args.push('--ffmpeg-location', ffmpegPath);
     args.push('-o', path.join(finalDownloadPath, '%(title)s.%(ext)s'));
@@ -3455,7 +3563,7 @@ const createWindow = () => {
   mainWindowGlobal = mainWindow;
 
   // DEBUG: Abrir DevTools automaticamente para debug
-  //mainWindow.webContents.openDevTools();
+  mainWindow.webContents.openDevTools();
 
   // Remover menu nativo do Electron
   Menu.setApplicationMenu(null);
