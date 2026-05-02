@@ -72,17 +72,6 @@ Antivírus podem marcar o aplicativo como suspeito. **Isso é normal** porque:
 2. Verificar todo o código-fonte neste repositório
 3. Compilar você mesmo a partir do código
 
-## 🚀 Instalação
-
-### Linux
-
-1. **Baixe** o pacote `.deb` (ou `.rpm`) da versão desejada em [Releases](https://github.com/CaioBr3080/DLWave/releases)
-2. **Instale** o pacote com o gerenciador da sua distro
-3. **Abra** o DLWave pelo menu de aplicativos
-4. **Instale dependências** (yt-dlp + ffmpeg) quando solicitado na primeira execução
-
-> O app detecta o sistema e usa os binários corretos para Linux (`yt-dlp` e `ffmpeg`, sem `.exe`).
-
 ## 📖 Uso
 
 ### Download Básico
@@ -144,7 +133,6 @@ npm run make
 Os artefatos serão gerados em `out/make/`, variando por plataforma:
 
 - **Windows:** `out/make/squirrel.windows/x64/`
-- **Linux:** pacotes `.deb` e `.rpm` em subpastas de `out/make/`
 
 ### Build Linux (dica)
 
@@ -187,19 +175,8 @@ Contribuições são bem-vindas! Sinta-se livre para:
 
 ## 📝 Changelog
 
-### v1.1.2 (Linux support)
-- 🐧 Compatibilidade com Linux (Ubuntu/Pop!_OS e derivados)
-- 🔧 Detecção cross-platform de binários (`yt-dlp` e `ffmpeg`)
-- 📦 Ajustes de build para empacotamento Linux
-
-### v1.1.1 (2026-02-09)
-- ✨ Correções no gerenciamento de resolução
-- 🌐 Melhorias na extração de cookies
-- 💾 Limitador no donwload de playlists
-- 📂 Correções no cancelamento de donwload
-- 🎵 Suporte a plataforma além do YouTube 
-- ⏬ Instalação do YT-DLP via Winget e
-     atualização periódica do mesmo
+### v1.2.1 (2026-02-09)
+- ✨ Adição de corte para vídeos e áudios
 
 ## 📄 Licença
 
