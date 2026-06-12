@@ -3,6 +3,60 @@
 // ============================================
 import { t, setLanguage, currentLanguage } from './translations.js';
 
+function getAllowLowerQualityTitle(isEnabled) {
+  return t(isEnabled ? 'allowLowerQualityEnabled' : 'allowLowerQualityDisabled');
+}
+
+function getAllowLowerQualityLog(isEnabled) {
+  return t(isEnabled ? 'allowLowerQualityModeEnabled' : 'allowLowerQualityModeDisabled');
+}
+
+function updateSelectOptionLabels(content) {
+  const typeSelect = content.querySelector('.type-select');
+  if (typeSelect) {
+    const videoOption = typeSelect.querySelector('option[value="video"]');
+    const audioOption = typeSelect.querySelector('option[value="audio"]');
+    if (videoOption) videoOption.textContent = t('typeVideo');
+    if (audioOption) audioOption.textContent = t('typeAudio');
+  }
+
+  const resolutionSelect = content.querySelector('.resolution-select');
+  if (resolutionSelect) {
+    const labels = {
+      best: t('resBest'),
+      2160: t('res4k'),
+      1440: t('res2k'),
+      1080: t('resFullHd'),
+      720: t('resHd'),
+      480: t('resSd'),
+      360: t('res360'),
+      240: t('res240')
+    };
+
+    Array.from(resolutionSelect.options).forEach((option) => {
+      if (labels[option.value]) {
+        option.textContent = labels[option.value];
+      }
+    });
+  }
+}
+
+function attr(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function updateStandaloneTranslatedElements(root = document) {
+  root.querySelectorAll('.ignore-playlist-label').forEach((label) => {
+    label.title = t('ignorePlaylistTooltip');
+    const span = label.querySelector('span');
+    if (span) span.textContent = t('ignorePlaylist');
+  });
+}
+
 // ============================================
 // SISTEMA DE TABS - GERENCIADOR
 // ============================================
@@ -217,15 +271,15 @@ class TabManager {
       if (isDownloading) {
         // Cancelar download atual e reiniciar com nova configuração
         const newValue = !state.allowLowerQuality;
-        const action = newValue ? 'ativar' : 'desativar';
+        const action = newValue ? t('qualityActionEnable') : t('qualityActionDisable');
         
         const confirmed = await showConfirmDialog({
           type: 'warning',
-          title: 'Download em andamento',
-          message: `Deseja ${action} "Permitir qualidade inferior" e reiniciar o download?`,
-          detail: 'O download será cancelado e reiniciado do zero com a nova configuração.',
-          cancelLabel: 'Não',
-          confirmLabel: 'Sim, reiniciar'
+          title: t('allowLowerQualityRestartTitle'),
+          message: t('allowLowerQualityRestartMessage', { action }),
+          detail: t('allowLowerQualityRestartDetail'),
+          cancelLabel: t('no'),
+          confirmLabel: t('yesRestart')
         });
         
         if (confirmed) {
@@ -237,16 +291,16 @@ class TabManager {
           if (state.allowLowerQuality) {
             btnQualityWarning.style.color = '#4caf50';
             btnQualityWarning.style.borderColor = '#4caf50';
-            btnQualityWarning.title = 'Permitir qualidade inferior: ATIVADO';
+            btnQualityWarning.title = getAllowLowerQualityTitle(true);
           } else {
             btnQualityWarning.style.color = '#999';
             btnQualityWarning.style.borderColor = '#3a3a3a';
-            btnQualityWarning.title = 'Permitir qualidade inferior: DESATIVADO';
+            btnQualityWarning.title = getAllowLowerQualityTitle(false);
           }
           this.saveTabsState();
           
           // Reiniciar download
-          this.logToTab(id, `ℹ️ Reiniciando download com "Permitir qualidade inferior" ${state.allowLowerQuality ? 'ativado' : 'desativado'}...`, 'info');
+          this.logToTab(id, `ℹ️ ${t('allowLowerQualityRestartLog', { status: state.allowLowerQuality ? t('qualityStatusEnabled') : t('qualityStatusDisabled') })}`, 'info');
           await new Promise(resolve => setTimeout(resolve, 500)); // Pequeno delay para garantir cancelamento
           await this.startDownload(id);
         }
@@ -256,13 +310,13 @@ class TabManager {
         if (state.allowLowerQuality) {
           btnQualityWarning.style.color = '#4caf50';
           btnQualityWarning.style.borderColor = '#4caf50';
-          btnQualityWarning.title = 'Permitir qualidade inferior: ATIVADO';
-          this.logToTab(id, 'ℹ️ Modo "Permitir qualidade inferior" ativado', 'info');
+          btnQualityWarning.title = getAllowLowerQualityTitle(true);
+          this.logToTab(id, `ℹ️ ${getAllowLowerQualityLog(true)}`, 'info');
         } else {
           btnQualityWarning.style.color = '#999';
           btnQualityWarning.style.borderColor = '#3a3a3a';
-          btnQualityWarning.title = 'Permitir qualidade inferior: DESATIVADO';
-          this.logToTab(id, 'ℹ️ Modo "Permitir qualidade inferior" desativado', 'info');
+          btnQualityWarning.title = getAllowLowerQualityTitle(false);
+          this.logToTab(id, `ℹ️ ${getAllowLowerQualityLog(false)}`, 'info');
         }
         this.saveTabsState();
       }
@@ -272,11 +326,11 @@ class TabManager {
     if (state.allowLowerQuality) {
       btnQualityWarning.style.color = '#4caf50';
       btnQualityWarning.style.borderColor = '#4caf50';
-      btnQualityWarning.title = 'Permitir qualidade inferior: ATIVADO';
+      btnQualityWarning.title = getAllowLowerQualityTitle(true);
     } else {
       btnQualityWarning.style.color = '#999';
       btnQualityWarning.style.borderColor = '#3a3a3a';
-      btnQualityWarning.title = 'Permitir qualidade inferior: DESATIVADO';
+      btnQualityWarning.title = getAllowLowerQualityTitle(false);
     }
     
     // Formatos disponíveis
@@ -528,7 +582,7 @@ class TabManager {
       resolutionSelect.disabled = (state.type === 'audio');
     }
     if (pathDisplay) {
-      pathDisplay.textContent = state.downloadPath || 'Nenhuma pasta selecionada';
+      pathDisplay.textContent = state.downloadPath || t('noFolderSelected');
     }
     if (btnOpenFolder) {
       btnOpenFolder.disabled = !state.downloadPath;
@@ -536,6 +590,8 @@ class TabManager {
     if (ignorePlaylistCheckbox) {
       ignorePlaylistCheckbox.checked = state.ignorePlaylist || false;
     }
+
+    updateStandaloneTranslatedElements(content);
 
     // Restaurar inputs de trim
     const trimStartInput = content.querySelector('.trim-start-input');
@@ -553,11 +609,11 @@ class TabManager {
       if (state.allowLowerQuality) {
         btnQualityWarning.style.color = '#4caf50';
         btnQualityWarning.style.borderColor = '#4caf50';
-        btnQualityWarning.title = 'Permitir qualidade inferior: ATIVADO';
+        btnQualityWarning.title = getAllowLowerQualityTitle(true);
       } else {
         btnQualityWarning.style.color = '#999';
         btnQualityWarning.style.borderColor = '#3a3a3a';
-        btnQualityWarning.title = 'Permitir qualidade inferior: DESATIVADO';
+        btnQualityWarning.title = getAllowLowerQualityTitle(false);
       }
     }
     
@@ -1063,7 +1119,7 @@ class TabManager {
       queueContent.textContent = currentTitle;
       queueCount.textContent = `${current + 1}/${total}`;
     } else {
-      queueContent.textContent = 'Nenhum item na fila';
+      queueContent.textContent = t('queueEmpty');
       queueCount.textContent = '0/0';
     }
   }
@@ -1076,7 +1132,7 @@ class TabManager {
     const queueCount = tab.content.querySelector('.queue-count');
     
     // Resetar para estado padrão mas manter visível
-    queueContent.textContent = 'Nenhum item na fila';
+    queueContent.textContent = t('queueEmpty');
     queueCount.textContent = '0/0';
     
     tab.state.isPlaylistDownload = false;
@@ -1440,22 +1496,46 @@ function updateInterfaceLanguage() {
     const subtitle = content.querySelector('.subtitle');
     if (subtitle) subtitle.textContent = t('pageSubtitle');
     
-    // Labels
-    const labels = content.querySelectorAll('label');
-    if (labels[0]) labels[0].textContent = t('urlLabel');
-    if (labels[1]) labels[1].querySelector('span').textContent = t('ignorePlaylist');
-    if (labels[2]) labels[2].textContent = t('downloadType');
-    if (labels[3]) labels[3].textContent = t('format');
-    if (labels[4]) labels[4].textContent = t('resolution');
-    if (labels[5]) labels[5].textContent = t('downloadPath');
+    // Labels and placeholders
+    const urlGroup = content.querySelector('.url-input')?.closest('.input-group');
+    const trimGroup = content.querySelector('.trim-container')?.closest('.input-group');
+    const typeGroup = content.querySelector('.type-select')?.closest('.input-group');
+    const formatGroup = content.querySelector('.format-select')?.closest('.input-group');
+    const resolutionGroup = content.querySelector('.resolution-select')?.closest('.input-group');
+    const pathGroup = content.querySelector('.path-selector')?.closest('.input-group');
+
+    if (urlGroup?.querySelector('label')) urlGroup.querySelector('label').childNodes[0].textContent = t('urlLabel');
+    if (trimGroup?.querySelector('label')) trimGroup.querySelector('label').textContent = t('timeTrim');
+    if (typeGroup?.querySelector('label')) typeGroup.querySelector('label').textContent = t('downloadType');
+    if (formatGroup?.querySelector('label')) formatGroup.querySelector('label').textContent = t('format');
+    if (resolutionGroup?.querySelector('label')) resolutionGroup.querySelector('label').textContent = t('resolution');
+    if (pathGroup?.querySelector('label')) pathGroup.querySelector('label').textContent = t('downloadPath');
     
     // Input placeholder
     const urlInput = content.querySelector('.url-input');
     if (urlInput) urlInput.placeholder = t('urlPlaceholder');
+
+    const trimStartInput = content.querySelector('.trim-start-input');
+    if (trimStartInput) trimStartInput.placeholder = t('trimStartPlaceholder');
+
+    const trimEndInput = content.querySelector('.trim-end-input');
+    if (trimEndInput) trimEndInput.placeholder = t('trimEndPlaceholder');
+
+    const queueLabel = content.querySelector('.queue-label');
+    if (queueLabel) queueLabel.textContent = t('queueLabel');
+
+    const queueContent = content.querySelector('.queue-content');
+    if (queueContent) queueContent.textContent = t('queueEmpty');
+
+    const btnQualityWarning = content.querySelector('.btn-quality-warning');
+    if (btnQualityWarning) btnQualityWarning.title = t('qualitySettings');
     
     // Ignore playlist label
     const ignoreLabel = content.querySelector('.ignore-playlist-label');
     if (ignoreLabel) ignoreLabel.title = t('ignorePlaylistTooltip');
+
+    const ignoreSpan = content.querySelector('.ignore-playlist-label span');
+    if (ignoreSpan) ignoreSpan.textContent = t('ignorePlaylist');
     
     // No folder selected
     const pathDisplay = content.querySelector('.path-display');
@@ -1473,6 +1553,8 @@ function updateInterfaceLanguage() {
     
     const btnCancel = content.querySelector('.btn-cancel-download');
     if (btnCancel) btnCancel.textContent = t('cancelDownload');
+
+    updateSelectOptionLabels(content);
   }
   
   // Atualizar tabs existentes
@@ -1482,22 +1564,47 @@ function updateInterfaceLanguage() {
       if (!content) return;
       
       // Labels
-      const labels = content.querySelectorAll('label');
-      if (labels[0]) labels[0].childNodes[0].textContent = t('urlLabel');
-      if (labels[1]) {
-        const span = labels[1].querySelector('span');
-        if (span) span.textContent = t('ignorePlaylist');
-      }
-      if (labels[2]) labels[2].childNodes[0].textContent = t('downloadType');
-      if (labels[3]) labels[3].childNodes[0].textContent = t('format');
-      if (labels[4]) labels[4].childNodes[0].textContent = t('resolution');
-      if (labels[5]) labels[5].childNodes[0].textContent = t('downloadPath');
+      const urlGroup = content.querySelector('.url-input')?.closest('.input-group');
+      const trimGroup = content.querySelector('.trim-container')?.closest('.input-group');
+      const typeGroup = content.querySelector('.type-select')?.closest('.input-group');
+      const formatGroup = content.querySelector('.format-select')?.closest('.input-group');
+      const resolutionGroup = content.querySelector('.resolution-select')?.closest('.input-group');
+      const pathGroup = content.querySelector('.path-selector')?.closest('.input-group');
+
+      if (urlGroup?.querySelector('label')) urlGroup.querySelector('label').childNodes[0].textContent = t('urlLabel');
+      const ignoreSpan = content.querySelector('.ignore-playlist-label span');
+      if (ignoreSpan) ignoreSpan.textContent = t('ignorePlaylist');
+      if (trimGroup?.querySelector('label')) trimGroup.querySelector('label').textContent = t('timeTrim');
+      if (typeGroup?.querySelector('label')) typeGroup.querySelector('label').textContent = t('downloadType');
+      if (formatGroup?.querySelector('label')) formatGroup.querySelector('label').textContent = t('format');
+      if (resolutionGroup?.querySelector('label')) resolutionGroup.querySelector('label').textContent = t('resolution');
+      if (pathGroup?.querySelector('label')) pathGroup.querySelector('label').textContent = t('downloadPath');
       
       // Input placeholder
       const urlInput = content.querySelector('.url-input');
       if (urlInput && !urlInput.value) {
         urlInput.placeholder = t('urlPlaceholder');
       }
+
+      const trimStartInput = content.querySelector('.trim-start-input');
+      if (trimStartInput) trimStartInput.placeholder = t('trimStartPlaceholder');
+
+      const trimEndInput = content.querySelector('.trim-end-input');
+      if (trimEndInput) trimEndInput.placeholder = t('trimEndPlaceholder');
+
+      const queueLabel = content.querySelector('.queue-label');
+      if (queueLabel) queueLabel.textContent = t('queueLabel');
+
+      const queueContent = content.querySelector('.queue-content');
+      if (queueContent && !tabData.state.isPlaylistDownload) queueContent.textContent = t('queueEmpty');
+
+      const pathDisplay = content.querySelector('.path-display');
+      if (pathDisplay && !tabData.state.downloadPath) pathDisplay.textContent = t('noFolderSelected');
+
+      const btnQualityWarning = content.querySelector('.btn-quality-warning');
+      if (btnQualityWarning) btnQualityWarning.title = tabData.state.allowLowerQuality ? getAllowLowerQualityTitle(true) : getAllowLowerQualityTitle(false);
+
+      updateSelectOptionLabels(content);
       
       // Buttons
       const btnBrowse = content.querySelector('.btn-browse');
@@ -1514,6 +1621,8 @@ function updateInterfaceLanguage() {
       }
     });
   }
+
+  updateStandaloneTranslatedElements();
 }
 
 // Inicializar gerenciador de tabs
@@ -1771,93 +1880,93 @@ async function showSettingsModal() {
     <div class="settings-modal">
       <div class="settings-header">
         <div style="text-align: left; flex: 1;">
-          <h2 style="margin: 0;">⚙️ Configurações</h2>
+          <h2 style="margin: 0;">⚙️ ${t('settingsTitle')}</h2>
           <span style="font-size: 12px; color: #999; margin-top: 5px; display: block;">DLWave v<span id="appVersion">...</span></span>
         </div>
         <button class="btn-close-modal" onclick="this.closest('.settings-modal-overlay').remove()">×</button>
       </div>
       <div class="settings-content">
         <div class="settings-section">
-          <h3>Preferências Globais</h3>
-          <p class="settings-description">Configurações aplicadas a todas as tabs</p>
+          <h3>${t('globalPreferences')}</h3>
+          <p class="settings-description">${t('globalPreferencesDesc')}</p>
           
           <div class="settings-info">
             <div class="info-item">
-              <span class="info-label">Pasta Bin (yt-dlp + FFmpeg):</span>
+              <span class="info-label">${t('binFolderLabel')}</span>
               <span class="info-value" id="binPath">-</span>
             </div>
-            <button class="btn-open-bin" id="btnOpenBin" style="margin-top: 10px;">📁 Abrir Pasta Bin</button>
+            <button class="btn-open-bin" id="btnOpenBin" style="margin-top: 10px;">📁 ${t('openBinFolder')}</button>
           </div>
           
           <div class="settings-section" style="margin-top: 20px;">
-            <h4>Limite de Playlist</h4>
-            <p class="settings-description">Número máximo de vídeos a processar em playlists (máximo: 10000)</p>
+            <h4>${t('playlistLimit')}</h4>
+            <p class="settings-description">${t('playlistLimitDesc')}</p>
             <input type="number" id="playlistLimit" min="1" max="10000" placeholder="1000" style="width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; color: #fff; border-radius: 4px; font-size: 14px; margin-top: 10px;">
           </div>
           
           <div class="settings-checkbox">
             <label>
               <input type="checkbox" id="ignorePlaylistGlobal" />
-              <span>Ignorar playlists por padrão</span>
+              <span>${t('ignorePlaylistDefault')}</span>
             </label>
-            <p class="checkbox-description">Novas Waves iniciarão com "Ignorar Playlist" já marcado</p>
+            <p class="checkbox-description">${t('ignorePlaylistDefaultDesc')}</p>
           </div>
           
           <div class="settings-checkbox">
             <label>
               <input type="checkbox" id="minimizeToTray" />
-              <span>Minimizar para bandeja</span>
+              <span>${t('minimizeToTray')}</span>
             </label>
-            <p class="checkbox-description">Ao minimizar, o app fica na bandeja do sistema</p>
+            <p class="checkbox-description">${t('minimizeToTrayDesc')}</p>
           </div>
           
           <div class="settings-checkbox">
             <label>
               <input type="checkbox" id="noPlaylistFolder" />
-              <span>Não criar pastas para playlists</span>
+              <span>${t('noPlaylistFolders')}</span>
             </label>
-            <p class="checkbox-description">Baixar todos os itens da playlist diretamente na pasta escolhida, sem criar subpasta</p>
+            <p class="checkbox-description">${t('noPlaylistFoldersFullDesc')}</p>
           </div>
           
           <div class="settings-section" style="margin-top: 20px;">
-            <h4>Pasta Padrão de Downloads</h4>
-            <p class="settings-description">Waves sem pasta configurada usarão este local</p>
+            <h4>${t('defaultDownloadPath')}</h4>
+            <p class="settings-description">${t('defaultDownloadPathShortDesc')}</p>
             <div style="display: flex; gap: 10px; margin-top: 10px;">
-              <input type="text" id="defaultDownloadPath" readonly placeholder="Nenhuma pasta padrão configurada" style="flex: 1; padding: 8px; background: #2a2a2a; border: 1px solid #3a3a3a; color: #fff; border-radius: 4px;" />
-              <button class="btn-browse" id="btnSelectDefaultPath" style="padding: 8px 16px;">📁 Selecionar</button>
-              <button class="btn-browse" id="btnClearDefaultPath" style="padding: 8px 16px; display: none;">🗑️ Limpar</button>
+              <input type="text" id="defaultDownloadPath" readonly placeholder="${t('noDefaultDownloadPath')}" style="flex: 1; padding: 8px; background: #2a2a2a; border: 1px solid #3a3a3a; color: #fff; border-radius: 4px;" />
+              <button class="btn-browse" id="btnSelectDefaultPath" style="padding: 8px 16px;">📁 ${t('select')}</button>
+              <button class="btn-browse" id="btnClearDefaultPath" style="padding: 8px 16px; display: none;">🗑️ ${t('clear')}</button>
             </div>
           </div>
           
           <div class="settings-section" style="margin-top: 20px;">
-            <h4>Arquivo de Cookies (opcional)</h4>
-            <p class="settings-description">Para downloads que requerem autenticação (vídeos privados, age-restricted, etc.)</p>
+            <h4>${t('cookiesFileOptional')}</h4>
+            <p class="settings-description">${t('cookiesFileFullDesc')}</p>
             <div style="display: flex; gap: 15px; margin-top: 10px;">
-              <input type="text" id="cookiesFilePath" readonly placeholder="Nenhum arquivo selecionado" style="flex: 1; padding: 8px; background: #2a2a2a; border: 1px solid #3a3a3a; color: #fff; border-radius: 4px;" title="Use extensões como 'Get cookies.txt LOCALLY' ou 'cookies.txt' no Chrome/Firefox para exportar seus cookies" />
-              <button class="btn-browse" id="btnSelectCookies" style="padding: 8px 16px;" title="Use extensões como 'Get cookies.txt LOCALLY' (Chrome/Firefox) ou 'cookies.txt' para exportar os cookies do seu navegador em formato Netscape">📁 Selecionar .txt</button>
-              <button class="btn-browse" id="btnClearCookies" style="padding: 8px 16px; display: none;" title="Remover arquivo de cookies configurado">🗑️ Remover</button>
+              <input type="text" id="cookiesFilePath" readonly placeholder="${t('noFileSelected')}" style="flex: 1; padding: 8px; background: #2a2a2a; border: 1px solid #3a3a3a; color: #fff; border-radius: 4px;" title="${attr(t('cookiesFileHelp'))}" />
+              <button class="btn-browse" id="btnSelectCookies" style="padding: 8px 16px;" title="${attr(t('cookiesFileSelectHelp'))}">📁 ${t('selectTxt')}</button>
+              <button class="btn-browse" id="btnClearCookies" style="padding: 8px 16px; display: none;" title="${attr(t('removeCookiesFile'))}">🗑️ ${t('remove')}</button>
             </div>
           </div>
           
           <div class="settings-section" style="margin-top: 20px;">
-            <h4>Navegador para Cookies (Anti-Bot)</h4>
-            <p class="settings-description">Importa cookies automaticamente do navegador selecionado para evitar detecção de bot. Você precisa estar logado no YouTube neste navegador.</p>
+            <h4>${t('browserCookies')}</h4>
+            <p class="settings-description">${t('browserCookiesDesc')}</p>
             <div style="margin-top: 10px;">
-              <input type="text" id="browserPath" readonly placeholder="Selecione o executável do navegador (chrome.exe, brave.exe, firefox.exe, etc.)" style="width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; margin-bottom: 10px;">
+              <input type="text" id="browserPath" readonly placeholder="${t('browserPathPlaceholder')}" style="width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; margin-bottom: 10px;">
               <div style="display: flex; gap: 10px;">
-                <button class="btn-browse" id="btnSelectBrowser" style="padding: 8px 16px;" title="Selecione o executável do navegador">🌐 Selecionar Navegador</button>
-                <button class="btn-browse" id="btnClearBrowser" style="padding: 8px 16px; display: none;" title="Remover navegador configurado">🗑️ Remover</button>
+                <button class="btn-browse" id="btnSelectBrowser" style="padding: 8px 16px;" title="${attr(t('selectBrowserTitle'))}">🌐 ${t('selectBrowser')}</button>
+                <button class="btn-browse" id="btnClearBrowser" style="padding: 8px 16px; display: none;" title="${attr(t('removeBrowserTitle'))}">🗑️ ${t('remove')}</button>
               </div>
-              <p style="font-size: 12px; color: #999; margin-top: 8px;">Selecione o executável do seu navegador (ex: chrome.exe, brave.exe, msedge.exe, firefox.exe). Funciona com qualquer navegador.</p>
+              <p style="font-size: 12px; color: #999; margin-top: 8px;">${t('browserHelp')}</p>
               <div style="background: #ffeb3b20; border-left: 3px solid #ffeb3b; padding: 10px; margin-top: 10px; border-radius: 4px;">
-                <p style="font-size: 12px; color: #ffeb3b; margin: 0;">⚠️ <strong>IMPORTANTE:</strong> O navegador precisa estar <strong>FECHADO</strong> para que os cookies possam ser extraídos. Feche todas as janelas do navegador antes de baixar.</p>
+                <p style="font-size: 12px; color: #ffeb3b; margin: 0;">⚠️ <strong>${t('browserImportant')}</strong> ${t('browserClosedWarning')}</p>
               </div>
             </div>
           </div>
           
           <div class="settings-section" style="margin-top: 20px;">
-            <h4>Idioma / Language</h4>
-            <p class="settings-description">Interface language / Idioma da interface</p>
+            <h4>${t('languageTitle')}</h4>
+            <p class="settings-description">${t('languageFullDesc')}</p>
             <div style="margin-top: 10px;">
               <select id="languageSelect" style="width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; color: #fff; border-radius: 4px; font-size: 14px;">
                 <option value="pt-BR">Portugu\u00eas (Brasil)</option>
@@ -1866,11 +1975,11 @@ async function showSettingsModal() {
             </div>
           </div>
           
-          <button class="btn-save-prefs" id="btnSavePrefs" style="margin-top: 20px;" title="Salva as preferências globais e o estado atual de todas as Waves (nome, URL, pasta, configurações)">Salvar Preferências</button>
+          <button class="btn-save-prefs" id="btnSavePrefs" style="margin-top: 20px;" title="${attr(t('savePreferencesTitle'))}">${t('savePreferences')}</button>
           
           <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #3a3a3a;">
-            <h4 style="color: #f44336; margin-bottom: 10px;">⚠️ Zona de Perigo</h4>
-            <button class="btn-save-prefs" id="btnResetAll" style="background: #f44336; margin-top: 10px;" title="Remove TODAS as configurações e tabs salvas. Use se algo estiver com comportamento estranho.">Resetar Tudo (Limpar Cache)</button>
+            <h4 style="color: #f44336; margin-bottom: 10px;">${t('dangerZone')}</h4>
+            <button class="btn-save-prefs" id="btnResetAll" style="background: #f44336; margin-top: 10px;" title="${attr(t('resetAllTooltip'))}">${t('resetAll')}</button>
           </div>
         </div>
       </div>
@@ -2005,7 +2114,7 @@ async function showSettingsModal() {
     // Validar limite de playlist
     let playlistLimit = parseInt(playlistLimitInput.value) || 1000;
     if (playlistLimit > 10000) {
-      alert('⚠️ O limite máximo de playlist é 10000 vídeos!\n\nValor ajustado para 10000.');
+      alert(t('playlistLimitMaxAlert'));
       playlistLimit = 10000;
       playlistLimitInput.value = 10000;
     }
@@ -2030,7 +2139,7 @@ async function showSettingsModal() {
     // Feedback visual
     const btn = modal.querySelector('#btnSavePrefs');
     const originalText = btn.textContent;
-    btn.textContent = '✓ Salvo!';
+    btn.textContent = t('saved');
     btn.style.background = '#4caf50';
     
     setTimeout(() => {
@@ -2043,11 +2152,11 @@ async function showSettingsModal() {
   modal.querySelector('#btnResetAll').addEventListener('click', async () => {
     const confirmed = await showConfirmDialog({
       type: 'warning',
-      title: '⚠️ Resetar Tudo',
-      message: 'Isso vai DELETAR todas as configurações, preferências e tabs salvas!',
-      detail: 'O app será recarregado com configurações padrão. Esta ação não pode ser desfeita.',
-      cancelLabel: 'Cancelar',
-      confirmLabel: 'Sim, Resetar Tudo'
+      title: t('resetAllTitle'),
+      message: t('resetAllMessage'),
+      detail: t('resetAllDetail'),
+      cancelLabel: t('cancel'),
+      confirmLabel: t('resetAllConfirm')
     });
     
     if (confirmed) {
@@ -2085,7 +2194,7 @@ async function showSettingsModal() {
       console.log('🗑️ Preferências resetadas');
       
       // Recarregar app
-      alert('✅ Tudo resetado! O app será recarregado agora.');
+      alert(t('resetAllDone'));
       location.reload();
     }
   });
