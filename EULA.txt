@@ -1,6 +1,6 @@
 END USER LICENSE AGREEMENT (EULA)
 DLWave - YouTube Video/Audio Downloader
-Version 1.1.1
+Version 1.2.2
 
 PLEASE READ THIS END USER LICENSE AGREEMENT CAREFULLY BEFORE USING THIS SOFTWARE.
 
@@ -64,5 +64,5 @@ https://github.com/CaioBr3080/DLWave/issues
 
 By clicking "I Agree" or by installing/using the Software, you acknowledge that you have read this EULA, understand it, and agree to be bound by its terms.
 
-Copyright (c) 2026 caioa
+Copyright (c) 2026 CaioBr3080
 Licensed under the MIT License

@@ -3563,7 +3563,7 @@ const createWindow = () => {
   mainWindowGlobal = mainWindow;
 
   // DEBUG: Abrir DevTools automaticamente para debug
-  mainWindow.webContents.openDevTools();
+  //mainWindow.webContents.openDevTools();
 
   // Remover menu nativo do Electron
   Menu.setApplicationMenu(null);

@@ -1,7 +1,9 @@
 {
+  "playlistLimit": 1000,
   "ignorePlaylistGlobal": false,
   "minimizeToTray": false,
   "noPlaylistFolder": false,
   "defaultDownloadPath": "",
-  "cookiesFilePath": ""
+  "cookiesFilePath": "",
+  "browserPath": ""
 }
