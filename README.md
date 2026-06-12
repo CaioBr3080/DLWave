@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![DLWave](https://img.shields.io/badge/DLWave-1.1.1-blue)
+![DLWave](https://img.shields.io/badge/DLWave-1.2.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-blue)
 ![Electron](https://img.shields.io/badge/Electron-28+-purple)
@@ -124,27 +124,6 @@ npm run make
 Os artefatos serão gerados em `out/make/`, variando por plataforma:
 
 - **Windows:** `out/make/squirrel.windows/x64/`
-
-### Build Linux (dica)
-
-Para gerar artefatos Linux, rode o `npm run make` em uma máquina Linux (ou CI Linux), com as ferramentas de empacotamento instaladas no sistema.
-
-### Estrutura do Projeto
-
-```
-DLWave/
-├── src/
-│   ├── main.js           # Processo principal Electron
-│   ├── preload.js        # Bridge IPC
-│   ├── renderer.js       # Interface e lógica frontend
-│   └── translations.js   # Sistema de traduções
-├── core/
-│   └── dependencyManager.js  # Gerenciador yt-dlp/ffmpeg
-├── index.html           # Interface principal
-├── index.css            # Estilos
-├── forge.config.js      # Configuração Electron Forge
-└── package.json
-```
 
 ## 🔧 Tecnologias Utilizadas
 
