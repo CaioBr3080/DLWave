@@ -50,15 +50,6 @@ Construído com Electron, yt-dlp e ffmpeg
 
 Baixe a versão mais recente em [Releases](https://github.com/CaioBr3080/DLWave/releases)
 
-**Arquivo:** `DLWave-1.1.1 Setup.deb`
-
-### Pacotes Linux (Ubuntu/Pop!_OS e derivados)
-
-Na página de [Releases](https://github.com/CaioBr3080/DLWave/releases), baixe também os pacotes Linux:
-
-- `.deb` (Debian/Ubuntu/Pop!_OS)
-- `.rpm` (Fedora/openSUSE e compatíveis)
-
 ### ⚠️ Aviso de Antivírus
 
 Antivírus podem marcar o aplicativo como suspeito. **Isso é normal** porque:
@@ -176,7 +167,7 @@ Contribuições são bem-vindas! Sinta-se livre para:
 ## 📝 Changelog
 
 ### v1.2.1 (2026-02-09)
-- ✨ Adição de corte para vídeos e áudios
+-  Adição de corte para vídeos e áudios
 
 ## 📄 Licença
 
