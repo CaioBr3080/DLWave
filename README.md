@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![DLWave](https://img.shields.io/badge/DLWave-1.2.1-blue)
+![DLWave](https://img.shields.io/badge/DLWave-1.2.1.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-blue)
 ![Electron](https://img.shields.io/badge/Electron-28+-purple)
@@ -231,7 +231,7 @@ git push origin feature/NovaFeature
 
 ## 📝 Changelog
 
-### v1.2.1
+### v1.2.1.1
 
 * Adição de corte para vídeos e áudios.
 * Melhorias na tradução em inglês.
